@@ -1,8 +1,6 @@
-# Product Requirements Document (PRD)
-
 # You Know Ball?
 
-Version: 1.0
+Version: 2.0
 Status: Draft
 Project Type: AI-Powered Football Trivia Platform
 
@@ -14,11 +12,11 @@ You Know Ball? is an AI-powered football trivia and deduction platform where use
 
 Unlike traditional trivia games with predefined questions, the platform allows users to ask natural-language football questions such as:
 
-- “Has he played in the Premier League?”
-- “Is he Brazilian?”
-- “Has he won the Champions League?”
-- “Did he play with Cristiano Ronaldo?”
-- “Has he scored more than 100 goals?”
+- "Has he played in the Premier League?"
+- "Is he Brazilian?"
+- "Has he won the Champions League?"
+- "Did he play with Cristiano Ronaldo?"
+- "Has he scored more than 100 goals?"
 
 The system interprets the question using AI, queries a structured football database, and responds with:
 
@@ -137,6 +135,7 @@ The project also serves as a technical portfolio project demonstrating:
 - database engineering
 - NLP systems
 - scalable backend design
+- applied cybersecurity (auth, anti-cheat, secure leaderboard)
 
 ---
 
@@ -165,7 +164,22 @@ As a player, I want my previous questions displayed so I can track deductions.
 ---
 
 ### User Story 5
-As a player, I want multiple difficulty modes.
+As a player, I want multiple difficulty modes that match my football knowledge level.
+
+---
+
+### User Story 6
+As a player, I want to see what I have confirmed about the player — position, flank, nationality, club — displayed on the card as I narrow down.
+
+---
+
+### User Story 7
+As a player, I want to compete on a leaderboard against friends and globally.
+
+---
+
+### User Story 8
+As a player, I want a daily challenge that resets every 24 hours and lets me share my result.
 
 ---
 
@@ -173,24 +187,113 @@ As a player, I want multiple difficulty modes.
 
 ## Gameplay Flow
 
-1. System selects hidden player
-2. User asks a yes/no football question
-3. AI interprets the question
-4. Backend converts question into structured logic
-5. Database verifies answer
-6. System returns YES/NO/UNKNOWN
-7. User continues until player is identified
+1. Player selects difficulty mode
+2. System selects hidden player from the appropriate pool
+3. Player asks a yes/no football question
+4. AI interprets the question
+5. Backend converts question into structured logic
+6. Database verifies answer
+7. System returns YES / NO / UNKNOWN
+8. Confirmed information (position, flank, nationality, club) is revealed on the card
+9. Other answers stack as clue chips
+10. Player continues until correct guess or 20 questions exhausted
 
 ---
 
-# 9. Functional Requirements
+# 9. Player Pool & Difficulty Modes
 
-# 9.1 User Input System
+## Scope
 
-## Requirements
+Initial release covers active players currently registered in the top 5 European leagues:
+
+- Premier League
+- La Liga
+- Bundesliga
+- Serie A
+- Ligue 1
+
+Historical players and retired players are out of scope for v1.
+
+---
+
+## 9.1 Reel Watcher (Easy)
+
+**Definition:** Players from the top 4 clubs per league, filtered to those with 500+ minutes played in the current season.
+
+**Rationale:** Filters out squad fillers who technically belong to a top club but are not widely recognised. Ensures every player in this pool is someone a casual fan would know.
+
+**Approximate pool size:** 300–400 players
+
+| League | Clubs included | Approx. players |
+|---|---|---|
+| Premier League | Top 4 | ~80 |
+| La Liga | Top 4 | ~80 |
+| Bundesliga | Top 4 | ~80 |
+| Serie A | Top 4 | ~80 |
+| Ligue 1 | Top 4 | ~80 |
+
+---
+
+## 9.2 Mid (Medium)
+
+**Definition:** Players from the top 6 clubs per league, filtered to those with 500+ minutes played in the current season.
+
+**Approximate pool size:** 500–600 players
+
+| League | Clubs included | Approx. players |
+|---|---|---|
+| Premier League | Top 6 | ~120 |
+| La Liga | Top 6 | ~120 |
+| Bundesliga | Top 6 | ~120 |
+| Serie A | Top 6 | ~120 |
+| Ligue 1 | Top 6 | ~120 |
+
+---
+
+## 9.3 Ball Knower (Hard)
+
+**Definition:** All registered squad players across all clubs in all 5 leagues. No appearance filter applied. Includes squad players, bench warmers, and youth call-ups.
+
+**Approximate pool size:** 2,200–2,400 players
+
+| League | Approx. players |
+|---|---|
+| Premier League | ~530 |
+| La Liga | ~500 |
+| Bundesliga | ~450 |
+| Serie A | ~500 |
+| Ligue 1 | ~420 |
+
+---
+
+## Pool Behaviour
+
+- Modes are cumulative. Ball Knower includes all Mid players. Mid includes all Reel Watcher players.
+- Player selection within a mode is weighted. Reel Watcher will not randomly select a fringe squad player even if one technically qualifies.
+- The daily challenge uses a fixed mode. Mode is not selectable for daily — it rotates on a weekly schedule (Easy → Medium → Hard → repeat).
+
+---
+
+## Player Selection Algorithm
+
+The system must guarantee that every selected player has sufficient data to be answerable. Before selecting a player for a session the system checks:
+
+- nationality is populated
+- current club is populated
+- position is populated
+- at least one season of statistics exists
+- at least one league or club history entry exists
+
+Players failing this check are excluded from selection regardless of mode.
+
+---
+
+# 10. Functional Requirements
+
+## 10.1 User Input System
 
 ### FR-1
-Users must be able to type open-ended football questions.
+Users must be able to type open-ended football questions (max 200 characters).
 
 ---
 
@@ -198,9 +301,9 @@ Users must be able to type open-ended football questions.
 The system must support flexible phrasing.
 
 Examples:
-- “Did he ever play for Barca?”
-- “Has he played in Spain?”
-- “Is he under 30?”
+- "Did he ever play for Barca?"
+- "Has he played in Spain?"
+- "Is he under 30?"
 
 ---
 
@@ -211,14 +314,18 @@ Invalid questions:
 - non-football questions
 - offensive prompts
 - ambiguous nonsense
+- questions exceeding 200 characters
 
 ---
 
-# 9.2 AI Question Interpreter
-
-## Requirements
-
 ### FR-4
+The system must limit question submissions to one per two seconds per session to prevent scripted querying.
+
+---
+
+## 10.2 AI Question Interpreter
+
+### FR-5
 AI must classify question intent.
 
 Possible intent categories:
@@ -229,21 +336,20 @@ Possible intent categories:
 - statistics
 - age
 - position
+- flank / playing side
 - teammates
 - international career
 
 ---
 
-### FR-5
+### FR-6
 AI must extract entities.
 
 Example:
 
-Question:
-“Has he played for Real Madrid?”
+Question: "Has he played for Real Madrid?"
 
 Extracted:
-
 ```json
 {
   "type": "club_history",
@@ -253,115 +359,247 @@ Extracted:
 
 ---
 
-### FR-6
+### FR-7
 AI must NOT directly answer football questions.
 
-AI only interprets questions.
-
-Database determines truth.
-
----
-
-# 9.3 Database Query System
-
-## Requirements
-
-### FR-7
-Backend must generate structured database queries.
+AI only interprets questions. Database determines truth.
 
 ---
 
 ### FR-8
-All responses must be derived from stored data.
+AI output must be validated against a strict JSON schema before being used to construct a database query. Malformed or unexpected output is rejected.
 
 ---
 
 ### FR-9
+Prompt injection attempts must be detected, rejected, and logged for review.
+
+---
+
+## 10.3 Card Reveal System
+
+The player card displays confirmed information progressively as the player answers questions. All fields start hidden and are only revealed on a confirmed YES answer to the relevant question type.
+
+### FR-10
+The card must display the following fields:
+
+| Field | Location on card | Revealed by |
+|---|---|---|
+| Position (DEF / MID / ATK / GK) | Left panel, top box | YES answer to a position question |
+| Flank (LFT / CTR / RHT) | Left panel, bottom box | YES answer to a flank question |
+| Nationality | Right panel, top box | YES answer to a nationality question |
+| Current club | Right panel, bottom box | YES answer to a current club question |
+| Player silhouette | Centre | Correct final guess only |
+
+---
+
+### FR-11
+If the player is confirmed as GK, the flank box must automatically lock and display "—". Goalkeepers have no flank assignment.
+
+---
+
+### FR-12
+Boxes remain hidden (displaying "?") on NO or UNKNOWN answers. A box is only filled when the answer is a confirmed YES.
+
+---
+
+### FR-13
+If two separate position questions both receive YES (e.g. "Is he a midfielder?" YES, then "Is he an attacker?" NO), only the confirmed YES populates the box. The most recently confirmed YES overwrites the previous.
+
+---
+
+## 10.4 Database Query System
+
+### FR-14
+Backend must generate structured parameterized database queries from validated AI output.
+
+---
+
+### FR-15
+All responses must be derived from stored data. The AI never answers directly.
+
+---
+
+### FR-16
 The system must support:
 - player history queries
 - statistics queries
 - trophy queries
 - league queries
-- relational football queries
+- relational football queries (teammates, opponents)
 
 ---
 
-# 9.4 Response System
+## 10.5 Response System
 
-## Requirements
-
-### FR-10
-The system must respond with:
-- YES
-- NO
-- UNKNOWN
+### FR-17
+The system must respond with: YES / NO / UNKNOWN
 
 ---
 
-### FR-11
-Optional explanation mode may display supporting data.
+### FR-18
+Optional explanation mode may display supporting context.
 
-Example:
-
-“Yes — the player played for Juventus between 2018 and 2021.”
+Example: "Yes — the player played for Juventus between 2018 and 2021."
 
 ---
 
-# 9.5 Game State Management
+## 10.6 Game State Management
 
-## Requirements
-
-### FR-12
-The system must track:
-- previous questions
-- previous answers
-- number of attempts
-- game duration
-
----
-
-### FR-13
-The system must support game resets.
+### FR-19
+The system must track per session:
+- previous questions and answers
+- number of attempts (max 20)
+- elapsed time (server-side clock)
+- hidden player identity
+- current card reveal state
 
 ---
 
-### FR-14
-The hidden player must remain consistent during a session.
+### FR-20
+The hidden player must remain consistent and tamper-proof during a session. The player identity is stored server-side only and is never exposed to the client until a correct guess or game end.
 
 ---
 
-# 9.6 Difficulty Modes
-
-## Easy
-Current top 5 league players.
+### FR-21
+The system must support game resets without exposing the previous player.
 
 ---
 
-## Medium
-Includes recent retired players.
+## 10.7 Win & Loss Flow
+
+### Win condition
+Player submits a correct guess at any point within 20 questions.
+
+### Loss condition
+Player exhausts all 20 questions without a correct guess.
+
+### Win flow
+1. Player silhouette revealed and transitions from dark to coloured
+2. Win modal displayed showing: player name, score, questions used, time taken
+3. Daily result card generated (spoiler-free emoji pattern)
+4. Share prompt shown
+5. Leaderboard displayed with new rank highlighted
+6. Option to play again or try next difficulty
+
+### Loss flow
+1. Player identity revealed
+2. Score of 0 recorded — no leaderboard submission
+3. Guess streak resets to 0
+4. "Study this player" option shown — displays player career summary so the user learns
 
 ---
 
-## Hard
-Includes obscure or historical footballers.
+# 11. Scoring System
+
+Score is calculated entirely server-side using server timestamps. The client never performs score calculations.
+
+```
+base_score         = 1000
+question_penalty   = questions_asked × 40
+time_penalty       = floor(elapsed_seconds / 30) × 10
+difficulty_bonus   = Reel Watcher: 0 / Mid: +200 / Ball Knower: +500
+streak_multiplier  = 1 + (guess_streak × 0.05)
+
+final_score = (base_score − question_penalty − time_penalty + difficulty_bonus) × streak_multiplier
+```
+
+Minimum score on a win is 50 (score cannot go below 50 for a correct guess regardless of penalties).
+
+Scores are only submitted to the leaderboard on a win. Losses do not generate a score entry.
 
 ---
 
-# 10. Non-Functional Requirements
+# 12. Streak & Metagame Systems
 
-# 10.1 Performance
+## 12.1 Daily Streak
+
+- Increments when the player completes at least one game per calendar day (UTC)
+- Resets to 0 if a day is missed without a streak freeze token
+- Displayed as a flame counter in the game header
+
+### Streak milestones
+
+| Days | Reward |
+|---|---|
+| 3 | Bronze badge |
+| 7 | Streak freeze token granted |
+| 14 | Silver badge |
+| 30 | Gold badge + "On fire" achievement |
+| 100 | Platinum badge |
+
+---
+
+## 12.2 Guess Streak
+
+- Increments on every correct guess regardless of day
+- Resets only on a wrong final guess (loss)
+- Feeds into the score multiplier
+- Displayed on the player profile
+
+---
+
+## 12.3 Streak Freeze
+
+- Earned at every 7-day daily streak milestone
+- Spends automatically when a day is missed
+- Maximum 2 tokens stored at once
+- Displayed as a shield icon next to the flame counter
+
+---
+
+## 12.4 Badge System
+
+Badges are earned through gameplay, not purchased.
+
+| Badge | Condition |
+|---|---|
+| One question wonder | Correct guess in 1 question |
+| Legend hunter | 10 Ball Knower correct guesses |
+| On fire | 30-day daily streak |
+| Tactician | Correct guess without asking nationality |
+| Daily dominator | Rank 1 on a daily challenge leaderboard |
+| Ironclad | 100-day daily streak |
+
+---
+
+## 12.5 Daily Challenge
+
+- One hidden player per day, identical for all users worldwide
+- Mode rotates weekly: Easy → Medium → Hard → repeat
+- Resets at midnight UTC
+- After solving, a shareable result card is generated
+- Result card format: spoiler-free emoji row (YES = checkmark, NO = cross, UNKNOWN = question mark)
+- Player name is hidden in shared text until the recipient plays
+- Share text format: "You Know Ball? Daily #[N] — solved in [X] questions. Can you beat me?"
+
+---
+
+# 13. Leaderboard System
+
+Leaderboard details to be fully specified in a future revision. High-level structure:
+
+## Three tabs
+
+- **Global** — top 1000 all-time, refreshed hourly (not real-time). Player's own rank always pinned at the bottom even if outside top 1000.
+- **Friends** — scores visible only to mutual friends. Friends added by username or signed invite link.
+- **Daily** — resets with each daily challenge. Ranked by score, time as tiebreaker.
+
+---
+
+# 14. Non-Functional Requirements
+
+## 14.1 Performance
 
 ### NFR-1
 Responses should return within 1–2 seconds.
-
----
 
 ### NFR-2
 The database should support thousands of concurrent queries.
 
 ---
 
-# 10.2 Scalability
+## 14.2 Scalability
 
 ### NFR-3
 The system should support future expansion to:
@@ -372,56 +610,110 @@ The system should support future expansion to:
 
 ---
 
-# 10.3 Reliability
+## 14.3 Reliability
 
 ### NFR-4
-The system should avoid hallucinated football information.
-
-All answers must be database-backed.
+The system should avoid hallucinated football information. All answers must be database-backed.
 
 ---
 
-# 10.4 Security
+# 15. Security Requirements
 
-### NFR-5
-Prevent:
-- prompt injection
-- malicious queries
-- unrestricted SQL execution
+Security is a first-class concern given the project's portfolio purpose in demonstrating applied cybersecurity.
+
+## 15.1 Authentication & Session Security
+
+### SR-1 — JWT pattern
+- Access tokens: short-lived (15 minute expiry), stored in memory only — never in localStorage
+- Refresh tokens: stored as HttpOnly; Secure; SameSite=Strict cookies
+- Token rotation on every refresh — old token invalidated immediately on use
+
+### SR-2 — Login hardening
+- OAuth2 (Google / GitHub) as primary login method
+- Email/password as fallback — passwords hashed with bcrypt at cost factor 12
+- Login attempts rate-limited: 5 attempts per 15 minutes per IP, CAPTCHA required after threshold
 
 ---
 
-### NFR-6
-All database queries must be parameterized.
+## 15.2 Anti-Cheat & Tamper Detection
+
+### SR-3 — Server-side scoring
+- Score is never calculated client-side
+- All score math uses server-recorded timestamps
+- Client submits session token + guess only — server computes the score
+
+### SR-4 — Session integrity
+- Each game session has a signed session_token issued at game start
+- Score submissions without a valid matching session_token are rejected
+- Replay detection: a player cannot submit a score for the same daily puzzle twice
+
+### SR-5 — Rate limiting
+- Question submissions: max 1 per 2 seconds per session
+- Score submissions: max 1 per completed game session
+
+### SR-6 — Outlier detection
+- Statistical flag on scores that are mathematically implausible (e.g. maximum score in under 20 seconds)
+- Flagged scores held for admin review before appearing on leaderboard
 
 ---
 
-# 11. System Architecture
+## 15.3 Secure Leaderboard
 
-# High-Level Architecture
+### SR-7 — Audit log
+- Every score submission records: user ID, IP address, user agent, session duration, question count, timestamp
+- Log is append-only
 
-```text
-Football APIs / Datasets
+### SR-8 — Access control
+- Leaderboard endpoints require a valid authenticated session
+- No public unauthenticated access to score data
+
+### SR-9 — Signed invite links
+- Friend invite links are HMAC-signed with user_id + expiry timestamp
+- Links expire after 24 hours and cannot be forged or extended
+
+---
+
+## 15.4 Input Security
+
+### SR-10 — Prompt injection prevention
+- User question input is sanitised before being passed to the AI layer
+- AI output is validated against a strict JSON schema before any DB query is constructed
+- Input capped at 200 characters
+- Injection attempts logged and flagged for review
+
+### SR-11 — SQL injection prevention
+- All database queries use parameterized statements
+- The AI layer never constructs or touches raw SQL
+
+---
+
+# 16. System Architecture
+
+```
+Top 5 League APIs / Datasets
           ↓
-Data Ingestion Pipeline
+Data Ingestion Pipeline (scheduled, periodic)
           ↓
 PostgreSQL Database
           ↓
-Game Logic Engine
+Game Logic Engine  ←→  Session Manager (server-side state)
           ↓
-AI Question Interpreter
+AI Question Interpreter (intent classification + entity extraction)
           ↓
-YES / NO Response
+Parameterized DB Query Builder
+          ↓
+YES / NO / UNKNOWN Response
+          ↓
+Card Reveal State Update
 ```
 
 ---
 
-# 12. Data Sources
+# 17. Data Sources
 
-## Recommended Primary Source
+## Primary Source
 
-### API-FOOTBALL
-
+### API-Football
 Used for:
 - players
 - clubs
@@ -437,12 +729,10 @@ Used for:
 ### Transfermarkt Data
 Used for:
 - detailed transfer history
-- market value history
+- market value
 - career progression
 
----
-
-### Kaggle/Open Datasets
+### Kaggle / Open Datasets
 Used for:
 - initial seeding
 - testing
@@ -450,9 +740,9 @@ Used for:
 
 ---
 
-# 13. Database Requirements
+# 18. Database Schema
 
-# 13.1 Players Table
+## 18.1 Players
 
 ```sql
 Players (
@@ -460,29 +750,33 @@ Players (
   name,
   nationality,
   birth_date,
-  position,
-  current_club,
+  position,           -- DEF | MID | ATK | GK
+  flank,              -- LFT | CTR | RHT | NULL (GK)
+  current_club_id,
   dominant_foot,
-  height
+  height,
+  is_active,          -- boolean
+  minutes_current_season
 )
 ```
 
 ---
 
-# 13.2 Clubs Table
+## 18.2 Clubs
 
 ```sql
 Clubs (
   id,
   name,
   country,
-  league
+  league,
+  current_league_position
 )
 ```
 
 ---
 
-# 13.3 Club History
+## 18.3 Club History
 
 ```sql
 PlayerClubHistory (
@@ -490,6 +784,7 @@ PlayerClubHistory (
   club_id,
   start_year,
   end_year,
+  is_loan,            -- boolean
   appearances,
   goals,
   assists,
@@ -499,7 +794,7 @@ PlayerClubHistory (
 
 ---
 
-# 13.4 Season Statistics
+## 18.4 Season Statistics
 
 ```sql
 SeasonStats (
@@ -508,14 +803,14 @@ SeasonStats (
   competition,
   goals,
   assists,
- minutes_played,
+  minutes_played,
   appearances
 )
 ```
 
 ---
 
-# 13.5 National Team Statistics
+## 18.5 National Team Statistics
 
 ```sql
 NationalTeamStats (
@@ -523,13 +818,14 @@ NationalTeamStats (
   country,
   caps,
   goals,
+  debut_year,
   tournaments
 )
 ```
 
 ---
 
-# 13.6 Trophies
+## 18.6 Trophies
 
 ```sql
 PlayerTrophies (
@@ -542,33 +838,29 @@ PlayerTrophies (
 
 ---
 
-# 14. AI/NLP Design
+# 19. AI / NLP Design
 
-# AI Responsibilities
+## AI Responsibilities
 
-The AI layer is responsible for:
 - natural-language understanding
 - entity extraction
 - question classification
 - structured query generation
 
-The AI is NOT responsible for:
+## AI is NOT responsible for
+
 - football knowledge storage
 - direct answering
 - statistical truth generation
+- raw SQL construction
 
 ---
 
-# Example NLP Flow
+## Example NLP Flow
 
-## User Question
+**User question:** "Has he won a Ballon d'Or?"
 
-“Has he won a Ballon d’Or?”
-
----
-
-## Parsed Intent
-
+**Parsed intent:**
 ```json
 {
   "type": "trophy_check",
@@ -576,10 +868,7 @@ The AI is NOT responsible for:
 }
 ```
 
----
-
-## Database Query
-
+**Database query:**
 ```sql
 SELECT *
 FROM PlayerTrophies
@@ -587,160 +876,107 @@ WHERE player_id = ?
 AND trophy_name = 'Ballon d''Or';
 ```
 
----
-
-## Response
-
-YES / NO
+**Response:** YES / NO
 
 ---
 
-# 15. Candidate Filtering System
+## NLP Fallback Handling
 
-The game internally maintains a candidate pool.
+If a question cannot be classified with sufficient confidence:
+- The system returns an UNKNOWN response
+- The question is logged for review
+- The player is prompted to rephrase
 
-Each question narrows possible players.
+Confidence threshold for intent classification: to be defined during Phase 2 implementation.
 
-Example:
+---
 
-```text
-Initial pool → 10,000 players
+# 20. Candidate Filtering System
+
+The game internally maintains a candidate pool. Each question narrows possible players.
+
+```
+Initial pool (mode-dependent)
+  Reel Watcher → ~400 players
+  Mid          → ~600 players
+  Ball Knower  → ~2,400 players
+
+Question 1: Has he played in England?
+  → pool narrows to PL players only
+
+Question 2: Is he a defender?
+  → pool narrows further
+
+Question 3: Has he won the Champions League?
+  → pool narrows further
 ```
 
-Questions reduce possibilities.
-
-Example:
-
-```text
-Question 1:
-Has he played in England?
-→ 4,200 players remain
-
-Question 2:
-Is he a defender?
-→ 900 players remain
-
-Question 3:
-Has he won the Champions League?
-→ 110 players remain
-```
+The candidate pool is tracked server-side. The client never sees pool size or contents.
 
 ---
 
-# 16. UI/UX Requirements
+# 21. UI Framework
 
-# Core UI Components
+Full UI specification to be developed separately. High-level framework:
 
-## Question Input
-Text field for user questions.
+## Card Layout
 
----
+The central game element is a player card with the following zones:
 
-## Answer Display
-Shows:
-- YES
-- NO
-- UNKNOWN
+- **Top bar** — game title, difficulty label
+- **Left panel** — position box (DEF / MID / ATK / GK) and flank box (LFT / CTR / RHT), both hidden until confirmed
+- **Centre** — blacked-out player silhouette, revealed only on correct guess
+- **Right panel** — nationality box and current club box, both hidden until confirmed
+- **Footer** — clue chip row, question dot tracker, question input, guess button
 
----
+## Clue Chips
 
-## Question History
-Displays all previous questions and answers.
+All non-card answers (league history, trophies, stats, teammates) stack as colour-coded chips below the card:
+- Green = YES
+- Red = NO
+- Amber = UNKNOWN
 
----
+## Question Tracker
 
-## Game Stats
-Displays:
-- question count
-- elapsed time
-- streaks
+20 dots displayed below the clue chips. Amber = question used. Green = correct guess dot.
 
----
+## HUD
 
-## Guess Submission
-Allows player to submit final answer.
+Persistent header showing: daily streak, question count (X / 20), elapsed time.
 
 ---
 
-# 17. Future Features
-
-## Multiplayer Mode
-Multiple players compete in real-time.
-
----
-
-## Daily Challenge
-One hidden player per day.
-
----
-
-## AI Hint System
-AI suggests useful narrowing questions.
-
----
-
-## Leaderboards
-Track football knowledge rankings.
-
----
-
-## Voice Questions
-Allow spoken football questions.
-
----
-
-## Historical Modes
-Specific eras:
-- 2000s football
-- World Cup legends
-- Premier League only
-
----
-
-# 18. Technical Stack
+# 22. Technical Stack
 
 ## Frontend
 - React
 - Next.js
 - TailwindCSS
 
----
-
 ## Backend
-- Node.js + Express
-OR
-- Python FastAPI
-
----
+- Python FastAPI (preferred) or Node.js + Express
 
 ## Database
 - PostgreSQL
 
----
-
 ## AI Layer
-- OpenAI API
-- Local LLM later
-
----
+- OpenAI API (Phase 2)
+- Local LLM (Phase 4 consideration)
 
 ## Hosting
 - Vercel (frontend)
-- Railway/Render/Supabase (backend + DB)
+- Railway / Render / Supabase (backend + DB)
 
 ---
 
-# 19. Analytics & Metrics
-
-# Key Metrics
+# 23. Analytics & Metrics
 
 ## Gameplay Metrics
-- average questions per win
+- average questions per win per mode
 - average session duration
-- win rate
-- most common questions
-
----
+- win rate per mode
+- most common questions asked
+- most common first questions
 
 ## System Metrics
 - response latency
@@ -748,137 +984,125 @@ OR
 - AI parsing accuracy
 - API ingestion success rate
 
+## Security Metrics
+- flagged score submissions per day
+- failed login attempts per hour
+- prompt injection attempts per day
+
 ---
 
-# 20. Risks & Challenges
+# 24. Risks & Challenges
 
 ## Risk 1 — Incomplete Data
-Some APIs may lack historical information.
+Some players in Ball Knower mode may have sparse data making them unanswerable.
 
-Mitigation:
-- combine multiple data sources
-- support UNKNOWN responses
+Mitigation: pre-game eligibility check on every candidate player before selection.
 
 ---
 
 ## Risk 2 — AI Hallucination
-AI may generate incorrect assumptions.
+AI may generate incorrect assumptions about player data.
 
-Mitigation:
-- AI only interprets
-- database determines truth
+Mitigation: AI only interprets. Database determines truth.
 
 ---
 
 ## Risk 3 — Query Ambiguity
-Some questions may be unclear.
+Some questions may map to multiple intent categories.
 
-Mitigation:
-- ask follow-up clarification questions
-- confidence thresholds
+Mitigation: confidence thresholds, fallback to UNKNOWN, log for review.
 
 ---
 
 ## Risk 4 — API Costs
-Large-scale data APIs can become expensive.
+Large-scale football data APIs can be expensive at scale.
 
-Mitigation:
-- local caching
-- periodic ingestion
-- local DB querying
+Mitigation: local caching, periodic ingestion, query against local DB only during gameplay.
 
 ---
 
-# 21. Development Phases
+## Risk 5 — Score Manipulation
+Players may attempt to fake scores or inflate leaderboard positions.
 
-# Phase 1 — Prototype
+Mitigation: server-side scoring, signed session tokens, audit log, outlier detection.
+
+---
+
+# 25. Development Phases
+
+## Phase 1 — Prototype
 
 Goals:
-- database setup
-- player ingestion
-- simple yes/no logic
-- basic UI
+- PostgreSQL schema setup
+- API-Football ingestion for top 5 leagues (current season)
+- Player eligibility checker
+- Simple yes/no logic (no AI — keyword matching only)
+- Basic card UI (position, flank, nation, club reveal)
+- Win / loss flow
 
 ---
 
-# Phase 2 — AI Integration
+## Phase 2 — AI Integration
 
 Goals:
-- NLP parsing
-- entity extraction
-- flexible question handling
+- NLP intent classification
+- Entity extraction
+- Flexible question handling
+- Confidence threshold + fallback handling
+- Prompt injection detection
 
 ---
 
-# Phase 3 — Expansion
+## Phase 3 — Metagame & Leaderboard
 
 Goals:
-- larger datasets
-- multiplayer
-- analytics
-- leaderboards
+- JWT auth + OAuth2
+- Daily streak system
+- Guess streak + score multiplier
+- Leaderboard (global, friends, daily)
+- Badge system
+- Daily challenge + shareable result card
+- Anti-cheat: session token, server-side scoring, audit log
 
 ---
 
-# Phase 4 — Optimization
+## Phase 4 — Expansion & Optimisation
 
 Goals:
-- caching
-- scaling
-- improved AI accuracy
-- production deployment
+- Caching layer
+- Scaling
+- Improved AI accuracy
+- Outlier detection and admin review dashboard
+- Historical player mode (post-v1)
+- Mobile application consideration
 
 ---
 
-# 22. Success Criteria
+# 26. Success Criteria
 
 The product is successful if:
 
-- users can ask flexible football questions naturally
+- players can ask flexible football questions naturally
 - answers are accurate and data-backed
-- gameplay feels intelligent and engaging
-- the system scales reliably
-- players return for repeated sessions
+- the card reveal system makes deduction visually satisfying
+- gameplay feels intelligent and replayable across all three difficulty modes
+- the leaderboard and streak systems drive return sessions
+- the security implementation is robust enough to demonstrate in a portfolio context
 
 ---
 
-# 23. Final Recommendation
-
-Recommended architecture:
-
-- API-Football for ingestion
-- PostgreSQL as primary truth database
-- AI only for interpretation
-- backend-controlled query generation
-
-This ensures:
-- accuracy
-- low latency
-- scalability
-- maintainability
-- extensibility
-
----
-
-# 24. Conclusion
+# 27. Conclusion
 
 You Know Ball? combines:
-- football trivia
-- AI-driven language interpretation
-- structured football intelligence
-- deduction gameplay
-- scalable backend engineering
+- football trivia and deduction gameplay
+- AI-driven natural-language interpretation
+- structured football data engineering
+- a progressive card reveal UI
+- scalable backend architecture
+- applied cybersecurity across auth, anti-cheat, and leaderboard integrity
 
-The project has the potential to evolve into:
-- a football trivia platform
-- a football IQ challenge system
-- a multiplayer football knowledge game
-- a sports-data engineering showcase
-
-The recommended development approach emphasizes:
-- reliable structured data
-- AI-assisted interpretation
-- scalable architecture
-- engaging gameplay mechanics
-- accurate football knowledge verification
-
+The recommended development approach emphasises:
+- reliable structured data as the single source of truth
+- AI limited strictly to interpretation
+- security implemented as a first-class feature from Phase 1
+- engaging progressive reveal mechanics that reward deduction over guessing
