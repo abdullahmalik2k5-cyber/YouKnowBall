@@ -1,0 +1,1 @@
+"""Card reveal logic."""

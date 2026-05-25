@@ -1,0 +1,1 @@
+"""Difficulty mode logic."""

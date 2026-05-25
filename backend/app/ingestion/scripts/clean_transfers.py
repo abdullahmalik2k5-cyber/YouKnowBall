@@ -1,0 +1,1 @@
+"""Clean raw transfer data."""
