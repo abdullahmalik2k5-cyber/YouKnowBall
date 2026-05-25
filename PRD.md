@@ -1105,4 +1105,4 @@ The recommended development approach emphasises:
 - reliable structured data as the single source of truth
 - AI limited strictly to interpretation
 - security implemented as a first-class feature from Phase 1
-- engaging progressive reveal mechanics that reward deduction over guessing
+- engaging progressive reveal mechanics that reward deduction over guessing.
