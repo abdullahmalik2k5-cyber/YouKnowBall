@@ -80,6 +80,7 @@ class Player(Base):
     nationality_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("countries.id"), nullable=True)
     position: Mapped[str] = mapped_column(String(10), nullable=False)
     sub_position: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    position_group: Mapped[str | None] = mapped_column(String(20), nullable=True)
     preferred_foot: Mapped[str | None] = mapped_column(String(20), nullable=True)
     height_cm: Mapped[int | None] = mapped_column(Integer, nullable=True)
     current_club_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("clubs.id"), nullable=True)
@@ -104,6 +105,8 @@ class Player(Base):
         Index("ix_players_name", "name"),
         Index("ix_players_nationality_id", "nationality_id"),
         Index("ix_players_position", "position"),
+        Index("ix_players_current_club_id", "current_club_id"),
+        Index("ix_players_position_group", "position_group"),
     )
 
 
@@ -139,8 +142,8 @@ class Transfer(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     player_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("players.id"), nullable=False, index=True)
-    from_club_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("clubs.id"), nullable=True)
-    to_club_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("clubs.id"), nullable=True)
+    from_club_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("clubs.id"), nullable=True, index=True)
+    to_club_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("clubs.id"), nullable=True, index=True)
     transfer_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     transfer_fee: Mapped[int | None] = mapped_column(Integer, nullable=True)
     market_value_eur: Mapped[int | None] = mapped_column(Integer, nullable=True)
