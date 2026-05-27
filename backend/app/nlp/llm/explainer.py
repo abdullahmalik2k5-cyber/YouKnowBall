@@ -7,29 +7,27 @@ Your job is to generate a single, engaging, natural-language sentence explaining
 You are given:
 1. The user's original question.
 2. The database's official answer (YES, NO, or UNKNOWN).
-3. The hidden player's name.
-4. Supporting database facts (e.g. club history, appearances, nationality, etc.).
+3. Supporting database facts (e.g. club history, appearances, nationality, etc.).
 
 Strict rules:
 1. Keep the explanation to exactly ONE concise sentence.
 2. You MUST state the answer clearly (e.g., starting with "Yes," "No," or "It is unknown").
-3. Do NOT hallucinate. Use ONLY the provided database facts to support the explanation.
-4. Keep the tone friendly, conversational, and knowledgeable (like a football pundit).
+3. CRITICAL: You must NEVER reveal or mention the name of the player. Do NOT use the player's name anywhere in your explanation. Refer to the player ONLY as "the player", "he", or "this player".
+4. CRITICAL: The database facts contain formal/legal club names (e.g. 'Associazione Calcio Milan', 'Verein für Leibesübungen Wolfsburg'). In your explanation, you MUST simplify these to their common, widely known football names (e.g. 'AC Milan', 'Wolfsburg', 'Borussia Dortmund', 'Bayern Munich'). Do not write out the long formal/legal names.
+5. Do NOT hallucinate. Use ONLY the provided database facts to support the explanation.
+6. Keep the tone friendly, conversational, and knowledgeable (like a football pundit).
 
 Examples:
 - Inputs:
-  Question: "Did he ever play in Italy?"
+  Question: "Did he ever play for Dortmund?"
   Answer: YES
-  Player: Erling Haaland
-  Facts: Played for Molde, Bryne, Red Bull Salzburg, Borussia Dortmund, Manchester City.
-  Output: "Yes, Erling Haaland has never played for an Italian club throughout his career." (Wait, if answer is YES, this example would say: "Yes, but Erling Haaland has actually never played for a club in Italy.")
+  Facts: Played for Ballspielverein Borussia 09 e. V. Dortmund.
+  Output: "Yes, the player represented Borussia Dortmund in the past."
   
-  Let's correct:
-  Question: "Did he ever play in Germany?"
-  Answer: YES
-  Player: Erling Haaland
-  Facts: Played for Borussia Dortmund (2020-2022).
-  Output: "Yes, Erling Haaland played for Borussia Dortmund in Germany between 2020 and 2022."
+  Question: "Is he French?"
+  Answer: NO
+  Facts: Nationality is Norway.
+  Output: "No, the player's nationality is not French."
 """
 
 def generate_explanation(question: str, answer: str, player_name: str, facts: str) -> str:
@@ -38,17 +36,16 @@ def generate_explanation(question: str, answer: str, player_name: str, facts: st
     if not api_key:
         # Fallback to a clean hardcoded format if no API key is set
         if answer == "YES":
-            return f"Yes, that is correct for {player_name} ({facts})."
+            return f"Yes, that is correct ({facts})."
         elif answer == "NO":
-            return f"No, that is not correct for {player_name}."
-        return f"It is unknown whether that applies to {player_name}."
+            return f"No, that is not correct."
+        return f"It is unknown whether that applies."
 
     try:
         client = Groq(api_key=api_key)
         user_prompt = (
             f"Question: \"{question}\"\n"
             f"Answer: {answer}\n"
-            f"Player Name: {player_name}\n"
             f"Database Facts: {facts}\n\n"
             f"Generate the 1-sentence explanation:"
         )
@@ -62,7 +59,18 @@ def generate_explanation(question: str, answer: str, player_name: str, facts: st
             temperature=0.3,
             max_tokens=60
         )
-        return response.choices[0].message.content.strip()
+        explanation = response.choices[0].message.content.strip()
+        
+        # Post-processing safety check: censor player name if the LLM accidentally outputs it
+        player_parts = [p.lower() for p in player_name.split() if len(p) > 2]
+        explanation_lower = explanation.lower()
+        for part in player_parts:
+            if part in explanation_lower:
+                # Case-insensitive replacement
+                pattern = re.compile(re.escape(part), re.IGNORECASE)
+                explanation = pattern.sub("the player", explanation)
+                
+        return explanation
     except Exception as e:
         print(f"Explainer API Error: {e}")
         # Default simple fallback

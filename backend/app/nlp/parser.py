@@ -6,7 +6,12 @@ def parse_question(db: Session, question: str) -> dict:
     """Orchestrates question parsing: Rule-based patterns first, then Groq LLM fallback."""
     cleaned = question.strip()
     if not cleaned:
-        return {"type": "invalid", "value": None}
+        return {
+            "type": "invalid",
+            "value": None,
+            "error_type": "empty_question",
+            "message": "You entered an empty question. Please ask something!"
+        }
         
     # Layer 1: Rule-Based Parser (0ms latency, free)
     result = parse_with_rules(db, cleaned)

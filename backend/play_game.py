@@ -15,36 +15,34 @@ from app.game.queries import handlers
 from app.game.candidate_engine.engine import CandidateEngine
 
 def log_and_execute(db, query_str, params):
-    """Prints the exact SQL query and params before executing."""
-    print("\n" + "="*50)
-    print("🔥 [DATABASE LOG] Executing SQL Query:")
-    print(query_str.strip())
-    print(f"👉 [PARAMETERS]: {params}")
-    print("="*50)
-    
-    result = db.execute(text(query_str), params)
-    return result
+    """Executes a parameterized SQL query silently (or logging it if debug is needed)."""
+    return db.execute(text(query_str), params)
 
 def main():
     db = SessionLocal()
     
-    # Fix the hidden player to Erling Haaland
-    haaland_id = "66da82cb-d561-5f56-8b71-ef716f1c4322"
-    target_player_name = "Erling Haaland"
-    
-    # Verify player exists
-    player_exists = db.execute(
-        text("SELECT name FROM players WHERE id = :id"), 
-        {"id": haaland_id}
-    ).fetchone()
-    
-    if not player_exists:
-        print("Error: Erling Haaland was not found in the database. Please run ingestion first.")
+    # 1. Randomly pick an active player who has a club and nationality
+    print("🔄 Picking a random hidden player from database...")
+    pick_query = """
+        SELECT p.id, p.name
+        FROM players p
+        JOIN clubs c ON p.current_club_id = c.id
+        JOIN countries nat ON p.nationality_id = nat.id
+        WHERE p.active = true
+        ORDER BY RANDOM()
+        LIMIT 1
+    """
+    player = db.execute(text(pick_query)).fetchone()
+    if not player:
+        print("❌ Error: No active players found in the database. Please run ingestion first.")
         return
         
+    hidden_player_id = str(player[0])
+    hidden_player_name = str(player[1])
+    
     print("\n⚽ =============================================== ⚽")
-    print("      YOU KNOW BALL? - TERMINAL INTERACTIVE TESTER")
-    print("             (Target Player is HIDDEN)")
+    print("                  YOU KNOW BALL? - PLAY")
+    print("                (A Hidden Player is Set!)")
     print("⚽ =============================================== ⚽")
     print("Rules:")
     print("- You have up to 20 questions to narrow down the player.")
@@ -66,7 +64,7 @@ def main():
             # Check game limits
             if question_count >= max_questions:
                 print(f"\n⚠️ Game Over: You have reached the maximum of {max_questions} questions!")
-                print(f"The hidden player was: {target_player_name}")
+                print(f"The hidden player was: {hidden_player_name}")
                 break
                 
             status_line = f"[Q: {question_count}/{max_questions} | Guesses: {guess_count}/{max_guesses}]"
@@ -76,7 +74,7 @@ def main():
                 continue
             
             if action.lower() == 'q':
-                print(f"Exiting game. The hidden player was: {target_player_name}")
+                print(f"Exiting game. The hidden player was: {hidden_player_name}")
                 break
                 
             # Submit a guess
@@ -86,16 +84,17 @@ def main():
                 
                 # Check match (case insensitive, allow minor space variations)
                 normalized_guess = re.sub(r'\s+', ' ', player_guess.strip().lower())
-                normalized_target = target_player_name.lower()
+                normalized_target = hidden_player_name.lower()
                 
+                # Check if full guess or last name matches
                 if normalized_guess == normalized_target or normalized_guess in normalized_target:
-                    print(f"\n🏆 CONGRATULATIONS! You guessed it right! It is indeed {target_player_name}!")
+                    print(f"\n🏆 CONGRATULATIONS! You guessed it right! It is indeed {hidden_player_name}!")
                     break
                 else:
                     print(f"❌ Incorrect Guess! That is not the hidden player.")
                     if guess_count >= max_guesses:
                         print(f"\n💀 Game Over: You used all {max_guesses} guesses!")
-                        print(f"The hidden player was: {target_player_name}")
+                        print(f"The hidden player was: {hidden_player_name}")
                         break
                     continue
             
@@ -105,7 +104,6 @@ def main():
             
             print("\n🤖 [NLP Parsing] Analyzing your question...")
             parsed = parse_question(db, question)
-            print(f"👉 [NLP Result]: Type='{parsed['type']}', Value='{parsed['value']}'")
             
             if parsed["type"] == "invalid" or not parsed["value"]:
                 err_msg = parsed.get("message", "The parser could not understand your question. Try asking about nationality, club history, current club, position, or competition.")
@@ -113,6 +111,8 @@ def main():
                 question_count -= 1 # Don't charge a question turn for invalid parsing
                 continue
                 
+            print(f"👉 [NLP Result]: Type='{parsed['type']}', Value='{parsed['value']}'")
+            
             answer = "UNKNOWN"
             sql_query = ""
             params = {}
@@ -125,8 +125,8 @@ def main():
                     JOIN countries c ON p.nationality_id = c.id
                     WHERE p.id = :pid
                 """
-                params = {"pid": haaland_id}
-                res = log_and_execute(db, sql_query, params).scalar()
+                params = {"pid": hidden_player_id}
+                res = db.execute(text(sql_query), params).scalar()
                 if res:
                     answer = "YES" if parsed["value"].lower() in res.lower() or res.lower() in parsed["value"].lower() else "NO"
                     if answer == "YES":
@@ -142,8 +142,8 @@ def main():
                     JOIN clubs c ON p.current_club_id = c.id
                     WHERE p.id = :pid
                 """
-                params = {"pid": haaland_id}
-                res = log_and_execute(db, sql_query, params).scalar()
+                params = {"pid": hidden_player_id}
+                res = db.execute(text(sql_query), params).scalar()
                 if res:
                     answer = "YES" if parsed["value"].lower() in res.lower() or res.lower() in parsed["value"].lower() else "NO"
                     if answer == "YES":
@@ -159,8 +159,8 @@ def main():
                     JOIN clubs c ON pch.club_id = c.id
                     WHERE pch.player_id = :pid AND LOWER(c.name) LIKE :club
                 """
-                params = {"pid": haaland_id, "club": f"%{parsed['value'].lower()}%"}
-                res = log_and_execute(db, sql_query, params).scalar()
+                params = {"pid": hidden_player_id, "club": f"%{parsed['value'].lower()}%"}
+                res = db.execute(text(sql_query), params).scalar()
                 answer = "YES" if res > 0 else "NO"
                 if answer == "YES":
                     fact_details = f"He has played for {parsed['value']} in his career."
@@ -174,8 +174,8 @@ def main():
                     FROM players
                     WHERE id = :pid
                 """
-                params = {"pid": haaland_id}
-                res = log_and_execute(db, sql_query, params).scalar()
+                params = {"pid": hidden_player_id}
+                res = db.execute(text(sql_query), params).scalar()
                 if res:
                     answer = "YES" if res.lower() == parsed["value"].lower() else "NO"
                     pos_map = {"GK": "Goalkeeper", "DEF": "Defender", "MID": "Midfielder", "ATK": "Attacker"}
@@ -193,8 +193,8 @@ def main():
                     JOIN competitions c ON a.competition_id = c.id
                     WHERE a.player_id = :pid AND LOWER(c.name) LIKE :comp
                 """
-                params = {"pid": haaland_id, "comp": f"%{parsed['value'].lower()}%"}
-                res = log_and_execute(db, sql_query, params).scalar()
+                params = {"pid": hidden_player_id, "comp": f"%{parsed['value'].lower()}%"}
+                res = db.execute(text(sql_query), params).scalar()
                 answer = "YES" if res > 0 else "NO"
                 if answer == "YES":
                     fact_details = f"He has played in the {parsed['value']}."
@@ -202,16 +202,16 @@ def main():
                     fact_details = f"He has never played in the {parsed['value']}."
                 engine.filter_by_competition_history(parsed["value"], answer)
             
-            # Generate explanation - name is passed to generate_explanation ONLY to censor it if LLM leaks it!
+            # Generate explanation - name is passed to generate_explanation to censor it if LLM leaks it
             from app.nlp.llm.explainer import generate_explanation
-            explanation = generate_explanation(question, answer, target_player_name, fact_details)
+            explanation = generate_explanation(question, answer, hidden_player_name, fact_details)
             print(f"\n💬 [AI Host]: \"{explanation}\"")
             print(f"🎯 [DATABASE ANSWER]: {answer}")
             print(f"👥 [Remaining Candidates]: {engine.get_remaining_count()}")
             print("-" * 50 + "\n")
             
         except KeyboardInterrupt:
-            print(f"\nExiting game. The hidden player was: {target_player_name}")
+            print(f"\nExiting game. The hidden player was: {hidden_player_name}")
             break
 
 if __name__ == "__main__":
