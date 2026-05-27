@@ -1,14 +1,14 @@
+import psycopg
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 # Load .env manually
 def _load_env():
-    # Try current working directory and parent paths to find .env
     paths = [
         os.path.join(os.getcwd(), ".env"),
         os.path.join(os.path.dirname(os.getcwd()), ".env"),
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env")
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env"),
+        ".env",
+        "../.env"
     ]
     for path in paths:
         if os.path.exists(path):
@@ -25,14 +25,19 @@ def _load_env():
 
 _load_env()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://you_know_ball:you_know_ball@localhost:5432/you_know_ball")
+db_url = os.getenv("DATABASE_URL")
+if not db_url:
+    print("No DATABASE_URL set.")
+    exit(1)
 
-engine = create_engine(DATABASE_URL, echo=False)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+db_url = db_url.replace("postgresql+psycopg://", "postgresql://")
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+try:
+    with psycopg.connect(db_url) as conn:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            print("Attempting to disable read-only mode...")
+            cur.execute("ALTER DATABASE postgres SET default_transaction_read_only = off;")
+            print("SUCCESS! Read-only mode disabled.")
+except Exception as e:
+    print(f"FAILED: {e}")

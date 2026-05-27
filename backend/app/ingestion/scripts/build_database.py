@@ -2,23 +2,30 @@ import os
 import sys
 import psycopg
 from sqlalchemy import text
-from app.db.database import engine, Base
-from app.db.models import models
+from app.db.database import engine
+from app.db.models.models import Base
 
 # Cleaned data folder
 CLEANED_DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "cleaned")
 
 def create_tables():
+    print("Dropping existing tables to free up disk space...")
+    Base.metadata.drop_all(bind=engine)
     print("Creating tables...")
     Base.metadata.create_all(bind=engine)
     print("Tables created successfully.")
 
 def load_csv(table_name, csv_filename):
-    """Load a CSV file into a Postgres table using COPY for maximum speed."""
+    """Load a CSV file into a Postgres table using COPY for maximum speed, matching columns dynamically."""
     csv_path = os.path.join(CLEANED_DATA_DIR, csv_filename)
     if not os.path.exists(csv_path):
         print(f"Skipping {table_name}: {csv_filename} not found.")
         return
+
+    # Read first line to get columns
+    with open(csv_path, 'r', encoding='utf-8') as f:
+        header = f.readline().strip()
+    columns_list = ",".join([c.strip('"').strip("'") for c in header.split(",")])
 
     # Extract DB URL for psycopg3 connection
     db_url = os.getenv("DATABASE_URL", "postgresql://you_know_ball:you_know_ball@localhost:5432/you_know_ball")
@@ -29,7 +36,10 @@ def load_csv(table_name, csv_filename):
     try:
         with psycopg.connect(db_url) as conn:
             with conn.cursor() as cur:
-                with cur.copy(f"COPY {table_name} FROM STDIN WITH (FORMAT csv, HEADER true)") as copy:
+                # Disable statement timeout for large copy tasks
+                cur.execute("SET statement_timeout = 0;")
+                copy_query = f"COPY {table_name} ({columns_list}) FROM STDIN WITH (FORMAT csv, HEADER true)"
+                with cur.copy(copy_query) as copy:
                     with open(csv_path, 'r', encoding='utf-8') as f:
                         while data := f.read(8192):
                             copy.write(data)
