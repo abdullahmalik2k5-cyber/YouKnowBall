@@ -22,9 +22,9 @@ class CandidateEngine:
             SELECT p.id 
             FROM players p
             JOIN countries c ON p.nationality_id = c.id
-            WHERE LOWER(c.name) = LOWER(:country)
+            WHERE LOWER(c.name) LIKE :country
         """)
-        matches = {str(row[0]) for row in self.db.execute(query, {"country": country_name}).fetchall()}
+        matches = {str(row[0]) for row in self.db.execute(query, {"country": f"%{country_name.lower()}%"}).fetchall()}
         
         if expected_answer == "YES":
             self.pool.intersection_update(matches)
@@ -36,9 +36,9 @@ class CandidateEngine:
             SELECT p.id 
             FROM players p
             JOIN clubs c ON p.current_club_id = c.id
-            WHERE LOWER(c.name) = LOWER(:club)
+            WHERE LOWER(c.name) LIKE :club
         """)
-        matches = {str(row[0]) for row in self.db.execute(query, {"club": club_name}).fetchall()}
+        matches = {str(row[0]) for row in self.db.execute(query, {"club": f"%{club_name.lower()}%"}).fetchall()}
         
         if expected_answer == "YES":
             self.pool.intersection_update(matches)
@@ -50,9 +50,9 @@ class CandidateEngine:
             SELECT DISTINCT pch.player_id 
             FROM player_club_history pch
             JOIN clubs c ON pch.club_id = c.id
-            WHERE LOWER(c.name) = LOWER(:club)
+            WHERE LOWER(c.name) LIKE :club
         """)
-        matches = {str(row[0]) for row in self.db.execute(query, {"club": club_name}).fetchall()}
+        matches = {str(row[0]) for row in self.db.execute(query, {"club": f"%{club_name.lower()}%"}).fetchall()}
         
         if expected_answer == "YES":
             self.pool.intersection_update(matches)
@@ -76,9 +76,9 @@ class CandidateEngine:
             SELECT DISTINCT a.player_id 
             FROM appearances a
             JOIN competitions c ON a.competition_id = c.id
-            WHERE LOWER(c.name) = LOWER(:comp)
+            WHERE LOWER(c.name) LIKE :comp
         """)
-        matches = {str(row[0]) for row in self.db.execute(query, {"comp": competition_name}).fetchall()}
+        matches = {str(row[0]) for row in self.db.execute(query, {"comp": f"%{competition_name.lower()}%"}).fetchall()}
         
         if expected_answer == "YES":
             self.pool.intersection_update(matches)

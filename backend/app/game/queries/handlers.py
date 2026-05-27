@@ -13,7 +13,7 @@ def handle_nationality(db: Session, player_id: str, country_name: str) -> str:
     result = db.execute(query, {"pid": player_id}).scalar()
     if not result:
         return "UNKNOWN"
-    return "YES" if result.lower() == country_name.lower() else "NO"
+    return "YES" if country_name.lower() in result.lower() or result.lower() in country_name.lower() else "NO"
 
 def handle_current_club(db: Session, player_id: str, club_name: str) -> str:
     """Check if the player currently plays for the given club."""
@@ -26,7 +26,7 @@ def handle_current_club(db: Session, player_id: str, club_name: str) -> str:
     result = db.execute(query, {"pid": player_id}).scalar()
     if not result:
         return "UNKNOWN"
-    return "YES" if result.lower() == club_name.lower() else "NO"
+    return "YES" if club_name.lower() in result.lower() or result.lower() in club_name.lower() else "NO"
 
 def handle_club_history(db: Session, player_id: str, club_name: str) -> str:
     """Check if the player has ever played for the given club."""
@@ -34,9 +34,9 @@ def handle_club_history(db: Session, player_id: str, club_name: str) -> str:
         SELECT COUNT(*)
         FROM player_club_history pch
         JOIN clubs c ON pch.club_id = c.id
-        WHERE pch.player_id = :pid AND LOWER(c.name) = LOWER(:club)
+        WHERE pch.player_id = :pid AND LOWER(c.name) LIKE :club
     """)
-    result = db.execute(query, {"pid": player_id, "club": club_name}).scalar()
+    result = db.execute(query, {"pid": player_id, "club": f"%{club_name.lower()}%"}).scalar()
     return "YES" if result > 0 else "NO"
 
 def handle_position(db: Session, player_id: str, position_group: str) -> str:
@@ -57,7 +57,7 @@ def handle_competition_history(db: Session, player_id: str, competition_name: st
         SELECT COUNT(*)
         FROM appearances a
         JOIN competitions c ON a.competition_id = c.id
-        WHERE a.player_id = :pid AND LOWER(c.name) = LOWER(:comp)
+        WHERE a.player_id = :pid AND LOWER(c.name) LIKE :comp
     """)
-    result = db.execute(query, {"pid": player_id, "comp": competition_name}).scalar()
+    result = db.execute(query, {"pid": player_id, "comp": f"%{competition_name.lower()}%"}).scalar()
     return "YES" if result > 0 else "NO"
