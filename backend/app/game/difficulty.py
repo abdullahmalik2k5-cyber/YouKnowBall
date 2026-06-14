@@ -131,66 +131,26 @@ def get_player_pool_ids(db: Session, difficulty: str = "hard") -> Set[str]:
     """
     difficulty = difficulty.lower().strip()
 
-    if difficulty == "hard":
-        # All players at clubs in the top-5 leagues
-        club_ids = _get_top5_club_ids(db)
-        if not club_ids:
-            # Fallback: all active eligible players
-            res = db.execute(
-                text(f"SELECT p.id FROM players p WHERE {_eligibility_check_clause()}")
-            ).fetchall()
-            return {str(r[0]) for r in res}
-
-        placeholders = ", ".join(f":c{i}" for i in range(len(club_ids)))
-        params = {f"c{i}": cid for i, cid in enumerate(club_ids)}
-        query = text(f"""
-            SELECT p.id FROM players p
-            WHERE p.current_club_id IN ({placeholders})
-            AND {_eligibility_check_clause()}
+    if difficulty == "easy":
+        query = text("""
+            SELECT id FROM players
+            WHERE eligible = true AND LOWER(difficulty) = 'easy' AND active = true
         """)
-        res = db.execute(query, params).fetchall()
-        return {str(r[0]) for r in res}
-
-    elif difficulty in ("medium", "easy"):
-        n_clubs = EASY_CLUBS_PER_LEAGUE if difficulty == "easy" else MEDIUM_CLUBS_PER_LEAGUE
-        min_mins = EASY_MIN_MINUTES if difficulty == "easy" else MEDIUM_MIN_MINUTES
-        top_club_ids = _get_ranked_clubs_per_league(db, n_clubs)
-
-        if not top_club_ids:
-            # Fallback to hard
-            return get_player_pool_ids(db, "hard")
-
-        placeholders = ", ".join(f":c{i}" for i in range(len(top_club_ids)))
-        params = {f"c{i}": cid for i, cid in enumerate(top_club_ids)}
-        params["min_mins"] = min_mins
-
-        # Players must have 500+ total minutes across all appearances
-        query = text(f"""
-            SELECT p.id FROM players p
-            WHERE p.current_club_id IN ({placeholders})
-            AND {_eligibility_check_clause()}
-            AND (
-                SELECT COALESCE(SUM(a.minutes_played), 0)
-                FROM appearances a WHERE a.player_id = p.id
-            ) >= :min_mins
+    elif difficulty == "medium":
+        query = text("""
+            SELECT id FROM players
+            WHERE eligible = true AND LOWER(difficulty) IN ('easy', 'medium') AND active = true
         """)
-        res = db.execute(query, params).fetchall()
-        pool = {str(r[0]) for r in res}
-
-        # If pool is suspiciously small, relax minutes filter and try again
-        if len(pool) < 50:
-            query_relaxed = text(f"""
-                SELECT p.id FROM players p
-                WHERE p.current_club_id IN ({placeholders})
-                AND {_eligibility_check_clause()}
-            """)
-            res = db.execute(query_relaxed, {k: v for k, v in params.items() if k != "min_mins"}).fetchall()
-            pool = {str(r[0]) for r in res}
-
-        return pool
-
+    elif difficulty == "hard":
+        query = text("""
+            SELECT id FROM players
+            WHERE eligible = true AND LOWER(difficulty) IN ('easy', 'medium', 'hard') AND active = true
+        """)
     else:
         raise ValueError(f"Unknown difficulty '{difficulty}'. Use 'easy', 'medium', or 'hard'.")
+
+    res = db.execute(query).fetchall()
+    return {str(r[0]) for r in res}
 
 
 def select_hidden_player(db: Session, difficulty: str = "hard") -> tuple[str, str] | None:

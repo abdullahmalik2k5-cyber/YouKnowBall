@@ -18,7 +18,7 @@ def run_simulation():
         FROM players p
         JOIN clubs c ON p.current_club_id = c.id
         JOIN countries nat ON p.nationality_id = nat.id
-        WHERE p.active = true
+        WHERE p.active = true AND p.eligible = true
         LIMIT 1
     """)
     player = db.execute(query).fetchone()

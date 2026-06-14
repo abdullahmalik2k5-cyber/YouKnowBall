@@ -27,7 +27,12 @@ _load_env()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://you_know_ball:you_know_ball@localhost:5432/you_know_ball")
 
-engine = create_engine(DATABASE_URL, echo=False)
+engine = create_engine(
+    DATABASE_URL, 
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=300
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db():
