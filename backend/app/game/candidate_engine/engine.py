@@ -107,16 +107,20 @@ class CandidateEngine:
     # ─── Nationality ───────────────────────────────────────────────────────────
 
     def filter_by_nationality(self, country_name: str, expected_answer: str):
-        """Eliminates players based on nationality."""
+        """Eliminates players based on nationality.
+        
+        Uses exact LOWER(c.name) = LOWER(:country) to avoid substring collisions
+        like 'Iran' matching 'Ukraine', 'Niger' matching 'Nigeria', etc.
+        """
         query = text("""
             SELECT p.id
             FROM players p
             JOIN countries c ON p.nationality_id = c.id
-            WHERE LOWER(c.name) LIKE :country
+            WHERE LOWER(c.name) = LOWER(:country)
         """)
         matches = {
             str(row[0])
-            for row in self.db.execute(query, {"country": f"%{country_name.lower()}%"}).fetchall()
+            for row in self.db.execute(query, {"country": country_name.strip()}).fetchall()
         }
         self._apply_filter(matches, expected_answer)
 

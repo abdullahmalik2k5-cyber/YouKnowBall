@@ -37,21 +37,21 @@ def run_simulation():
     print(f"1. Querying nationality: '{nationality}'...")
     ans = handlers.handle_nationality(db, str(hidden_id), nationality)
     print(f"   Answer: {ans}")
-    engine.filter_by_nationality(nationality, ans)
+    engine.filter_by_nationality(nationality, ans[0])
     print(f"   Candidates remaining: {engine.get_remaining_count()}")
     
     # 3. Filter by current club
     print(f"2. Querying current club: '{club}'...")
     ans = handlers.handle_current_club(db, str(hidden_id), club)
     print(f"   Answer: {ans}")
-    engine.filter_by_current_club(club, ans)
+    engine.filter_by_current_club(club, ans[0])
     print(f"   Candidates remaining: {engine.get_remaining_count()}")
     
     # 4. Filter by position group
     print(f"3. Querying position: '{position}'...")
     ans = handlers.handle_position(db, str(hidden_id), position)
     print(f"   Answer: {ans}")
-    engine.filter_by_position(position, ans)
+    engine.filter_by_position(position, ans[0])
     print(f"   Candidates remaining: {engine.get_remaining_count()}")
     
     # Verify the winner

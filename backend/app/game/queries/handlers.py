@@ -29,7 +29,15 @@ def handle_nationality(db: Session, player_id: str, country_name: str) -> tuple[
     result = db.execute(query, {"pid": player_id}).scalar()
     if not result:
         return "UNKNOWN", "No nationality data found."
-    answer = "YES" if country_name.lower() in result.lower() or result.lower() in country_name.lower() else "NO"
+
+    asked = country_name.strip().lower()
+    actual = result.strip().lower()
+
+    # Strict exact equality only — bidirectional substring matching causes false positives:
+    # e.g. 'Iran' inside 'Ukraine', 'Mali' inside 'Somalia', 'Niger' inside 'Nigeria',
+    # 'Oman' inside 'Romania', 'Guinea' inside 'Equatorial Guinea'.
+    # The NLP layer always returns a canonical country name, so exact match is correct.
+    answer = "YES" if asked == actual else "NO"
     fact = f"His nationality is {result}." if answer == "YES" else f"His nationality is not {country_name} — it is {result}."
     return answer, fact
 
@@ -45,7 +53,20 @@ def handle_current_club(db: Session, player_id: str, club_name: str) -> tuple[st
     result = db.execute(query, {"pid": player_id}).scalar()
     if not result:
         return "UNKNOWN", "No current club data found."
-    answer = "YES" if club_name.lower() in result.lower() or result.lower() in club_name.lower() else "NO"
+
+    # Use bidirectional substring for club names — this is intentional because club
+    # canonical names can differ from common names (e.g. "Futbol Club Barcelona" vs "Barcelona").
+    # However, require the shorter string to be at least 4 chars to avoid false positives.
+    asked = club_name.strip().lower()
+    actual = result.strip().lower()
+    if len(asked) >= 4 and (asked in actual or actual in asked):
+        match = True
+    elif asked == actual:
+        match = True
+    else:
+        match = False
+
+    answer = "YES" if match else "NO"
     fact = f"His current club is {result}." if answer == "YES" else f"His current club is not {club_name}."
     return answer, fact
 

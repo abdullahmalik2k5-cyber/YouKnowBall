@@ -115,19 +115,27 @@ FOOT_KEYWORDS: dict[str, str] = {
 # ─── Age regex ────────────────────────────────────────────────────────────────
 # Captures patterns like: "under 30", "younger than 25", "over 32", "at least 28",
 # "older than 33", "less than 27", "more than 29", "aged 31"
+#
+# IMPORTANT ordering rules:
+#   1. "no less than" must come BEFORE "less than" (substring issue).
+#   2. Patterns that start with digits (e.g. "30 or older") use a named group
+#      (?P<years>\d) so extraction doesn't accidentally grab the word group.
+#
 AGE_PATTERNS = [
-    # "under 30" / "below 30" / "less than 30" / "younger than 30"
-    (re.compile(r"\b(under|below|less than|younger than|not yet)\s+(\d{1,2})\b"), "lt"),
-    # "at least 30" / "30 or older" / "30 or more" (>= / gte)
-    (re.compile(r"\b(at least|no less than|minimum)\s+(\d{1,2})\b"), "gte"),
-    (re.compile(r"\b(\d{1,2})\s+or (older|more|above)\b"), "gte"),
-    # "over 30" / "above 30" / "more than 30" / "older than 30" / "greater than 30" (strictly >)
-    (re.compile(r"\b(over|above|more than|older than|greater than)\s+(\d{1,2})\b"), "gt"),
-    # "30 or younger" / "30 or less" (<=)
-    (re.compile(r"\b(\d{1,2})\s+or (younger|less|below)\b"), "lte"),
-    # "exactly 30" / "aged 30" / "he is 30 years" / "he's 30"
-    (re.compile(r"\b(exactly|aged)\s+(\d{1,2})\b"), "eq"),
-    (re.compile(r"\bhe(?:'s| is)\s+(\d{1,2})\s+years"), "eq"),
+    # ≥ : "at least 30" / "no less than 25" / "minimum 28"
+    (re.compile(r"\b(at least|no less than|minimum)\s+(?P<years>\d{1,2})\b"), "gte"),
+    # ≥ : "30 or older" / "30 or more" / "30 or above"
+    (re.compile(r"\b(?P<years>\d{1,2})\s+or\s+(?:older|more|above)\b"), "gte"),
+    # ≤ : "30 or younger" / "30 or less" / "30 or below"
+    (re.compile(r"\b(?P<years>\d{1,2})\s+or\s+(?:younger|less|below)\b"), "lte"),
+    # < : "under 30" / "below 30" / "less than 30" / "younger than 30" / "not yet 30"
+    (re.compile(r"\b(?:under|below|less than|younger than|not yet)\s+(?P<years>\d{1,2})\b"), "lt"),
+    # > : "over 30" / "above 30" / "more than 30" / "older than 30" / "greater than 30"
+    (re.compile(r"\b(?:over|above|more than|older than|greater than)\s+(?P<years>\d{1,2})\b"), "gt"),
+    # = : "exactly 30" / "aged 30"
+    (re.compile(r"\b(?:exactly|aged)\s+(?P<years>\d{1,2})\b"), "eq"),
+    # = : "he's 30 years" / "he is 30 years"
+    (re.compile(r"\bhe(?:'s| is)\s+(?P<years>\d{1,2})\s+years"), "eq"),
 ]
 
 
@@ -146,12 +154,12 @@ def parse_with_rules(db: Session, question: str) -> dict | None:
             return {"type": "position", "value": pos}
 
     # ── 2. Age ───────────────────────────────────────────────────────────────
-    # Must come before nationality so "under 21" doesn't hit country detection
+    # Must come before nationality so "under 21" doesn't hit country detection.
+    # All patterns use a named group 'years' for unambiguous digit extraction.
     for pattern, operator in AGE_PATTERNS:
         m = pattern.search(q)
         if m:
-            # The age number is always in the last capture group
-            years = int(m.group(m.lastindex))
+            years = int(m.group("years"))
             return {
                 "type": "age",
                 "value": {"operator": operator, "years": years}

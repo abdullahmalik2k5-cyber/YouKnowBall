@@ -45,11 +45,11 @@ def _get_top5_competition_ids(db: Session) -> list[str]:
     rows = []
     for league_slug in TOP5_LEAGUE_NAMES:
         res = db.execute(
-            text("SELECT id FROM competitions WHERE LOWER(name) = :name LIMIT 1"),
+            text("SELECT id FROM competitions WHERE LOWER(name) = :name"),
             {"name": league_slug}
-        ).fetchone()
-        if res:
-            rows.append(str(res[0]))
+        ).fetchall()
+        for r in res:
+            rows.append(str(r[0]))
     return rows
 
 
