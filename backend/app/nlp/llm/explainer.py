@@ -1,4 +1,5 @@
 import os
+import re
 from groq import Groq
 
 EXPLAINER_SYSTEM_PROMPT = """You are the AI Game Host for 'You Know Ball?', a football trivia deduction game.
@@ -16,18 +17,29 @@ Strict rules:
 4. CRITICAL: The database facts contain formal/legal club names (e.g. 'Associazione Calcio Milan', 'Verein für Leibesübungen Wolfsburg'). In your explanation, you MUST simplify these to their common, widely known football names (e.g. 'AC Milan', 'Wolfsburg', 'Borussia Dortmund', 'Bayern Munich'). Do not write out the long formal/legal names.
 5. Do NOT hallucinate. Use ONLY the provided database facts to support the explanation.
 6. Keep the tone friendly, conversational, and knowledgeable (like a football pundit).
+7. CRITICAL: Output your sentence DIRECTLY. Do NOT wrap it in quotes or any other characters.
 
 Examples:
 - Inputs:
   Question: "Did he ever play for Dortmund?"
   Answer: YES
   Facts: Played for Ballspielverein Borussia 09 e. V. Dortmund.
-  Output: "Yes, the player represented Borussia Dortmund in the past."
+  Output: Yes, the player represented Borussia Dortmund in the past.
   
   Question: "Is he French?"
   Answer: NO
   Facts: Nationality is Norway.
-  Output: "No, the player's nationality is not French."
+  Output: No, the player's nationality is not French — he is Norwegian.
+
+  Question: "Is he European?"
+  Answer: YES
+  Facts: Nationality is Germany.
+  Output: Yes, the player is European — he is German.
+
+  Question: "Is he under 30?"
+  Answer: NO
+  Facts: Age is 34.
+  Output: No, the player is not under 30 — he is 34 years old.
 """
 
 def generate_explanation(question: str, answer: str, player_name: str, facts: str) -> str:
@@ -57,21 +69,35 @@ def generate_explanation(question: str, answer: str, player_name: str, facts: st
             ],
             model="llama-3.1-8b-instant",
             temperature=0.3,
-            max_tokens=60
+            max_tokens=80
         )
         explanation = response.choices[0].message.content.strip()
         
-        # Post-processing safety check: censor player name if the LLM accidentally outputs it
-        player_parts = [p.lower() for p in player_name.split() if len(p) > 2]
+        # Strip any surrounding quotes the LLM might output despite instructions
+        explanation = explanation.strip('"\'')
+        
+        # Post-processing safety check: censor player name if LLM accidentally outputs it.
+        # Check for full name substring first (case-insensitive), then individual name parts > 3 chars.
+        player_name_lower = player_name.lower()
         explanation_lower = explanation.lower()
-        for part in player_parts:
-            if part in explanation_lower:
-                # Case-insensitive replacement
-                pattern = re.compile(re.escape(part), re.IGNORECASE)
-                explanation = pattern.sub("the player", explanation)
-                
+        
+        if player_name_lower in explanation_lower:
+            pattern = re.compile(re.escape(player_name), re.IGNORECASE)
+            explanation = pattern.sub("the player", explanation)
+        else:
+            # Fallback: check individual parts that are long enough to be meaningful
+            player_parts = [p for p in player_name.split() if len(p) > 3]
+            for part in player_parts:
+                if part.lower() in explanation.lower():
+                    pattern = re.compile(re.escape(part), re.IGNORECASE)
+                    explanation = pattern.sub("the player", explanation)
+                    
         return explanation
     except Exception as e:
         print(f"Explainer API Error: {e}")
         # Default simple fallback
-        return f"{answer.title()} - verified by database."
+        if answer == "YES":
+            return f"Yes, that checks out."
+        elif answer == "NO":
+            return f"No, that does not apply to the player."
+        return f"That information is unknown."

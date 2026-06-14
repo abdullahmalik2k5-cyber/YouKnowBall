@@ -1,59 +1,124 @@
 import json
-from pydantic import BaseModel, Field, field_validator
-from typing import Literal, Optional
+from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Literal, Optional, Union
+
+
+# ─── Age value schema ─────────────────────────────────────────────────────────
+
+class AgeValue(BaseModel):
+    operator: Literal["lt", "lte", "gt", "gte", "eq"]
+    years: int
+
+    @field_validator("years")
+    @classmethod
+    def validate_years(cls, v):
+        if not (10 <= v <= 60):
+            raise ValueError(f"Age {v} is out of plausible football range (10–60).")
+        return v
+
+
+# ─── Main parsed question schema ──────────────────────────────────────────────
 
 class ParsedQuestion(BaseModel):
-    type: Literal["nationality", "current_club", "club_history", "position", "competition", "invalid"]
-    value: Optional[str] = None
+    type: Literal[
+        "nationality", "current_club", "club_history", "position",
+        "competition", "continent", "age", "foot", "invalid"
+    ]
+    value: Optional[Union[str, dict]] = None
 
     @field_validator("type")
     @classmethod
     def validate_type(cls, v):
         return v
 
-    @field_validator("value")
-    @classmethod
-    def validate_value(cls, v, info):
-        # If type is position, value must be GK, DEF, MID, or ATK
-        if info.data.get("type") == "position":
+    @model_validator(mode="after")
+    def validate_value_for_type(self):
+        t = self.type
+        v = self.value
+
+        if t == "invalid":
+            self.value = None
+            return self
+
+        if t == "position":
             if v:
-                pos = v.upper()
-                if pos in ["GK", "DEF", "MID", "ATK"]:
-                    return pos
-                # Handle mapping common full names
+                pos = str(v).upper()
                 pos_map = {
-                    "GOALKEEPER": "GK",
-                    "DEFENDER": "DEF",
-                    "MIDFIELDER": "MID",
-                    "ATTACKER": "ATK",
-                    "STRIKER": "ATK",
-                    "FORWARD": "ATK",
-                    "WINGER": "ATK"
+                    "GOALKEEPER": "GK", "KEEPER": "GK", "GOALIE": "GK",
+                    "DEFENDER": "DEF", "BACK": "DEF",
+                    "MIDFIELDER": "MID", "MIDFIELD": "MID",
+                    "ATTACKER": "ATK", "STRIKER": "ATK", "FORWARD": "ATK",
+                    "WINGER": "ATK",
                 }
-                if pos in pos_map:
-                    return pos_map[pos]
-            return "MID" # Default fallback
-        return v
+                if pos in ["GK", "DEF", "MID", "ATK"]:
+                    self.value = pos
+                elif pos in pos_map:
+                    self.value = pos_map[pos]
+                else:
+                    self.value = "MID"  # safe fallback
+            else:
+                self.value = "MID"
+
+        elif t == "continent":
+            valid_continents = {"Europe", "South America", "Africa", "Asia", "North America", "Oceania"}
+            if v not in valid_continents:
+                # Try to normalise
+                v_lower = str(v).lower() if v else ""
+                continent_map = {
+                    "europe": "Europe", "european": "Europe",
+                    "africa": "Africa", "african": "Africa",
+                    "south america": "South America", "south american": "South America",
+                    "latin america": "South America",
+                    "north america": "North America", "north american": "North America",
+                    "asia": "Asia", "asian": "Asia",
+                    "oceania": "Oceania", "oceanian": "Oceania",
+                }
+                self.value = continent_map.get(v_lower, v)
+
+        elif t == "age":
+            if isinstance(v, dict):
+                # Validate the nested AgeValue schema
+                age_obj = AgeValue(**v)
+                self.value = {"operator": age_obj.operator, "years": age_obj.years}
+            elif v is None:
+                raise ValueError("Age type requires a value with operator and years.")
+
+        elif t == "foot":
+            if v:
+                foot_lower = str(v).lower()
+                foot_map = {
+                    "left": "left", "right": "right", "both": "both",
+                    "two-footed": "both", "ambidextrous": "both",
+                }
+                self.value = foot_map.get(foot_lower, foot_lower)
+
+        return self
+
+
+# ─── Import normalizer (placed here to avoid circular imports at module level) ─
 
 from app.nlp.normalizer import normalize_entity
+
 
 def validate_llm_json(raw_response: str) -> Optional[dict]:
     """Cleans up markdown JSON blocks and validates against the schema."""
     cleaned = raw_response.strip()
+    # Strip surrounding quotes if LLM wrapped the JSON in quotes
+    if cleaned.startswith('"') and cleaned.endswith('"'):
+        cleaned = cleaned[1:-1]
+    # Strip code fences if present
     if cleaned.startswith("```"):
-        # Strip code fences if present
         lines = cleaned.split("\n")
-        if lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines[-1].startswith("```"):
-            lines = lines[:-1]
+        lines = lines[1:] if lines[0].startswith("```") else lines
+        lines = lines[:-1] if lines and lines[-1].startswith("```") else lines
         cleaned = "\n".join(lines).strip()
-    
+
     try:
         data = json.loads(cleaned)
         parsed = ParsedQuestion(**data)
         res = parsed.model_dump()
-        if res.get("value"):
+        # Normalise string values (not age dicts)
+        if res.get("value") and isinstance(res["value"], str):
             res["value"] = normalize_entity(res["type"], res["value"])
         return res
     except Exception:
