@@ -1,9 +1,8 @@
 """
-One-time migration: backfill position_group for all players where it is NULL or 'UNKNOWN'.
-Uses the `position` column (Transfermarkt broad category: Goalkeeper/Defender/Midfield/Attack).
+Fast bulk backfill: sets position_group for all players where it is NULL or 'UNKNOWN',
+using a single CASE expression UPDATE — no Python loop needed.
 """
 import sys, os
-# Make both the backend root and the migrations dir importable
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
 from verify_database import _load_env
 _load_env()
@@ -11,55 +10,28 @@ _load_env()
 from app.db.database import engine
 from sqlalchemy import text
 
-POSITION_MAP = {
-    "Goalkeeper": "GK",
-    "Defender":   "DEF",
-    "Midfield":   "MID",
-    "Attack":     "ATK",
-    # sub-positions as fallback
-    "Centre-Back":          "DEF",
-    "Left-Back":            "DEF",
-    "Right-Back":           "DEF",
-    "Wing-Back":            "DEF",
-    "Left Wing-Back":       "DEF",
-    "Right Wing-Back":      "DEF",
-    "Defensive Midfield":   "MID",
-    "Central Midfield":     "MID",
-    "Attacking Midfield":   "MID",
-    "Right Midfield":       "MID",
-    "Left Midfield":        "MID",
-    "Left Winger":          "ATK",
-    "Right Winger":         "ATK",
-    "Centre-Forward":       "ATK",
-    "Second Striker":       "ATK",
-    "Striker":              "ATK",
-}
+SQL = """
+UPDATE players
+SET position_group = CASE
+    -- Broad Transfermarkt categories (players.position column)
+    WHEN position = 'Goalkeeper'  THEN 'GK'
+    WHEN position = 'Defender'    THEN 'DEF'
+    WHEN position = 'Midfield'    THEN 'MID'
+    WHEN position = 'Attack'      THEN 'ATK'
+    -- Sub-position fallbacks (players.sub_position column)
+    WHEN sub_position IN ('Centre-Back','Left-Back','Right-Back','Wing-Back','Left Wing-Back','Right Wing-Back') THEN 'DEF'
+    WHEN sub_position IN ('Defensive Midfield','Central Midfield','Attacking Midfield','Right Midfield','Left Midfield') THEN 'MID'
+    WHEN sub_position IN ('Left Winger','Right Winger','Centre-Forward','Second Striker','Striker') THEN 'ATK'
+    WHEN sub_position = 'Goalkeeper' THEN 'GK'
+    ELSE position_group  -- leave unchanged if we can't map
+END
+WHERE position_group IS NULL OR UPPER(COALESCE(position_group, '')) = 'UNKNOWN';
+"""
 
 def run():
-    updated = 0
-    skipped = 0
     with engine.begin() as conn:
-        # Fetch all players where position_group is bad
-        rows = conn.execute(text(
-            "SELECT id, position, sub_position FROM players "
-            "WHERE position_group IS NULL OR UPPER(position_group) = 'UNKNOWN'"
-        )).fetchall()
-
-        print(f"Found {len(rows)} players with UNKNOWN/NULL position_group.")
-
-        for player_id, position, sub_position in rows:
-            group = POSITION_MAP.get(position) or POSITION_MAP.get(sub_position)
-            if group:
-                conn.execute(text(
-                    "UPDATE players SET position_group = :grp WHERE id = :pid"
-                ), {"grp": group, "pid": player_id})
-                updated += 1
-            else:
-                skipped += 1
-
-    print(f"  Updated: {updated}")
-    print(f"  Skipped (no mapping found): {skipped}")
-    print("Done.")
+        result = conn.execute(text(SQL))
+        print(f"Backfill complete. Rows updated: {result.rowcount}")
 
 if __name__ == "__main__":
     run()
