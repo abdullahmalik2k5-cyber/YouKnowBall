@@ -206,14 +206,45 @@ class CandidateEngine:
     # ─── Position ─────────────────────────────────────────────────────────────
 
     def filter_by_position(self, position_group: str, expected_answer: str):
-        query = text("""
-            SELECT id FROM players
-            WHERE LOWER(position_group) = LOWER(:pos)
-        """)
-        matches = {
-            str(row[0])
-            for row in self.db.execute(query, {"pos": position_group}).fetchall()
+        # Build the set of Transfermarkt broad/sub-position names that map to this group.
+        # This covers the common case where position_group is 'UNKNOWN' in the DB
+        # because the ingestion ran before the fix was applied.
+        BROAD_NAMES: dict[str, list[str]] = {
+            "GK":  ["Goalkeeper"],
+            "DEF": ["Defender", "Centre-Back", "Left-Back", "Right-Back",
+                    "Wing-Back", "Left Wing-Back", "Right Wing-Back"],
+            "MID": ["Midfield", "Defensive Midfield", "Central Midfield",
+                    "Attacking Midfield", "Right Midfield", "Left Midfield"],
+            "ATK": ["Attack", "Left Winger", "Right Winger", "Centre-Forward",
+                    "Second Striker", "Striker"],
         }
+        pg_upper = position_group.upper()
+        raw_names = BROAD_NAMES.get(pg_upper, [])
+
+        # Players whose position_group is already correct
+        ids_by_group: set[str] = set()
+        row_pg = self.db.execute(
+            text("SELECT id FROM players WHERE LOWER(position_group) = LOWER(:pos)"),
+            {"pos": pg_upper}
+        ).fetchall()
+        ids_by_group = {str(r[0]) for r in row_pg}
+
+        # Players whose raw position / sub_position maps to this group
+        ids_by_raw: set[str] = set()
+        if raw_names:
+            placeholders = ", ".join(f":n{i}" for i in range(len(raw_names)))
+            params = {f"n{i}": n for i, n in enumerate(raw_names)}
+            raw_rows = self.db.execute(
+                text(f"""
+                    SELECT id FROM players
+                    WHERE position IN ({placeholders})
+                       OR sub_position IN ({placeholders})
+                """),
+                params
+            ).fetchall()
+            ids_by_raw = {str(r[0]) for r in raw_rows}
+
+        matches = ids_by_group | ids_by_raw
         self._apply_filter(matches, expected_answer)
 
     # ─── Competition History ───────────────────────────────────────────────────
@@ -238,6 +269,34 @@ class CandidateEngine:
             for row in self.db.execute(query, {"comp": f"%{competition_name.lower()}%"}).fetchall()
         }
         self._apply_filter(matches, expected_answer)
+
+    # ─── Big Six ──────────────────────────────────────────────────────────────
+
+    def filter_by_big_six(self, expected_answer: str):
+        """Filters candidates by whether they have ever played for a Big Six club.
+
+        The Big Six: Arsenal, Chelsea, Liverpool, Manchester City,
+                     Manchester United, Tottenham Hotspur.
+        """
+        BIG_SIX_PATTERNS = [
+            "%arsenal%", "%chelsea%", "%liverpool%",
+            "%manchester city%", "%manchester united%", "%tottenham%",
+        ]
+        matches: set[str] = set()
+        for pattern in BIG_SIX_PATTERNS:
+            rows = self.db.execute(
+                text("""
+                    SELECT DISTINCT pch.player_id
+                    FROM player_club_history pch
+                    JOIN clubs c ON pch.club_id = c.id
+                    WHERE LOWER(c.name) LIKE :club
+                """),
+                {"club": pattern}
+            ).fetchall()
+            matches.update(str(r[0]) for r in rows)
+        self._apply_filter(matches, expected_answer)
+
+
 
     # ─── Age ──────────────────────────────────────────────────────────────────
 
