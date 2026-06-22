@@ -76,17 +76,24 @@ def generate_explanation(question: str, answer: str, player_name: str, facts: st
         # Strip any surrounding quotes the LLM might output despite instructions
         explanation = explanation.strip('"\'')
         
-        # Post-processing safety check: censor player name if LLM accidentally outputs it.
-        # Check for full name substring first (case-insensitive), then individual name parts > 3 chars.
+        # ── Post-processing safety: censor player name if LLM accidentally leaks it ──
+        # Step 1: Replace the full name first (most reliable)
         player_name_lower = player_name.lower()
         explanation_lower = explanation.lower()
-        
+
         if player_name_lower in explanation_lower:
             pattern = re.compile(re.escape(player_name), re.IGNORECASE)
             explanation = pattern.sub("the player", explanation)
         else:
-            # Fallback: check individual parts that are long enough to be meaningful
-            player_parts = [p for p in player_name.split() if len(p) > 3]
+            # Step 2: Check every individual name part, including short ones like "Son", "Ji".
+            # Exclude common stop-words / prepositions that appear naturally in sentences
+            # (e.g. "de", "van", "la") to avoid garbling ordinary English.
+            STOP_WORDS = {
+                "de", "van", "le", "la", "da", "di", "do", "el", "al",
+                "bin", "bel", "del", "den", "von", "der", "des", "du",
+                "the", "and", "for", "in", "of", "at", "to",
+            }
+            player_parts = [p for p in player_name.split() if p.lower() not in STOP_WORDS]
             for part in player_parts:
                 if part.lower() in explanation.lower():
                     pattern = re.compile(re.escape(part), re.IGNORECASE)
