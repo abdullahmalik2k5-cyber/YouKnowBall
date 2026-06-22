@@ -29,7 +29,10 @@ The JSON schema MUST match one of these exact shapes:
 8. foot:
    {"type": "foot", "value": "left" | "right" | "both"}
 
-9. invalid:
+9. big_six:
+   {"type": "big_six", "value": "big_six"}
+
+10. invalid:
    {"type": "invalid", "value": null}
 
 Classify the intent using these guidelines:
@@ -51,6 +54,7 @@ Classify the intent using these guidelines:
 5. "competition": Questions about leagues/competitions they have played in.
    Examples: "Has he played in La Liga?", "Did he play in the Premier League?", "Has he played in the Champions League?"
    Extract the competition name (e.g. "La Liga", "premier-league", "Champions League").
+   IMPORTANT: Do NOT use this type for "big six" — use "big_six" instead.
 
 6. "continent": Questions about which continent the player is from.
    Examples: "Is he European?", "Is he African?", "Is he South American?", "Is he from Asia?"
@@ -65,7 +69,12 @@ Classify the intent using these guidelines:
    Examples: "Is he left-footed?", "Does he use his right foot?", "Is he two-footed?"
    Map to "left", "right", or "both".
 
-9. "invalid": If the question is not yes/no, is offensive, is not about football, or does not fit any above category.
+9. "big_six": Questions about whether the player has played for one of the English Premier League Big Six clubs
+   (Arsenal, Chelsea, Liverpool, Manchester City, Manchester United, Tottenham Hotspur).
+   Examples: "Is he a Big Six player?", "Has he played for a Big Six club?", "Is he from the big 6?", "big 6 club?"
+   Always return: {"type": "big_six", "value": "big_six"}
+
+10. "invalid": If the question is not yes/no, is offensive, is not about football, or does not fit any above category.
 
 Examples:
 Question: "Has he ever played for Juventus?"
@@ -104,9 +113,17 @@ JSON: {"type": "foot", "value": "left"}
 Question: "Does he prefer his right foot?"
 JSON: {"type": "foot", "value": "right"}
 
+Question: "Is he a Big Six player?"
+JSON: {"type": "big_six", "value": "big_six"}
+
+Question: "Has he played for a big 6 club?"
+JSON: {"type": "big_six", "value": "big_six"}
+
 Question: "Who is his favorite teammate?"
 JSON: {"type": "invalid", "value": null}
 """
+
+
 
 
 def get_user_prompt(question: str) -> str:
