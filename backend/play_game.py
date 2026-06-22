@@ -32,6 +32,7 @@ from app.game.queries.handlers import (
     handle_club_history,
     handle_position,
     handle_competition_history,
+    handle_big_six,
     handle_continent,
     handle_age,
     handle_foot,
@@ -207,6 +208,10 @@ def main():
             elif q_type == "competition":
                 answer, fact_details = handle_competition_history(db, hidden_player_id, q_value)
                 engine.filter_by_competition_history(q_value, answer)
+
+            elif q_type == "big_six":
+                answer, fact_details = handle_big_six(db, hidden_player_id)
+                engine.filter_by_big_six(answer)
 
             elif q_type == "continent":
                 answer, fact_details = handle_continent(db, hidden_player_id, q_value)
