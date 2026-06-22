@@ -1,9 +1,17 @@
+"""
+interactive_test.py — CLI interactive tester locked to Erling Haaland.
+
+Fixed issues vs original:
+  - Uses safe guess_matches() (no substring cheat)
+  - Uses handlers module for all question types (consistent with play_game.py)
+  - Supports ALL question types: nationality, current_club, club_history, position,
+    competition, big_six, continent, age, foot
+  - Charges a turn penalty after 3 consecutive invalid inputs
+"""
 import sys
 import os
 import re
-from sqlalchemy import text
 
-# Add backend directory to sys path so we can import app
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from verify_database import _load_env
@@ -11,208 +19,197 @@ _load_env()
 
 from app.db.database import SessionLocal
 from app.nlp.parser import parse_question
-from app.game.queries import handlers
+from app.game.queries.handlers import (
+    handle_nationality,
+    handle_current_club,
+    handle_club_history,
+    handle_position,
+    handle_competition_history,
+    handle_big_six,
+    handle_continent,
+    handle_age,
+    handle_foot,
+)
 from app.game.candidate_engine.engine import CandidateEngine
+from app.nlp.llm.explainer import generate_explanation
+from sqlalchemy import text
 
-def log_and_execute(db, query_str, params):
-    """Prints the exact SQL query and params before executing."""
-    print("\n" + "="*50)
-    print("🔥 [DATABASE LOG] Executing SQL Query:")
-    print(query_str.strip())
-    print(f"👉 [PARAMETERS]: {params}")
-    print("="*50)
-    
-    result = db.execute(text(query_str), params)
-    return result
+
+def normalize_guess(s: str) -> str:
+    return re.sub(r'\s+', ' ', s.strip().lower())
+
+
+def guess_matches(guess: str, target: str) -> bool:
+    """
+    Safe guess matching — exact full name, last name only, or reversed name.
+    Does NOT allow substring guessing (e.g. 'a', 'land').
+    """
+    g = normalize_guess(guess)
+    t = normalize_guess(target)
+
+    if g == t:
+        return True
+
+    parts = t.split()
+    if len(parts) > 1:
+        last_name = parts[-1]
+        if len(last_name) > 3 and g == last_name:
+            return True
+        reversed_name = " ".join(reversed(parts))
+        if g == reversed_name:
+            return True
+
+    return False
+
 
 def main():
     db = SessionLocal()
-    
-    # Fix the hidden player to Erling Haaland
+
+    # Fixed hidden player for repeatable testing
     haaland_id = "66da82cb-d561-5f56-8b71-ef716f1c4322"
     target_player_name = "Erling Haaland"
-    
-    # Verify player exists
+
     player_exists = db.execute(
-        text("SELECT name FROM players WHERE id = :id"), 
+        text("SELECT name FROM players WHERE id = :id"),
         {"id": haaland_id}
     ).fetchone()
-    
+
     if not player_exists:
-        print("Error: Erling Haaland was not found in the database. Please run ingestion first.")
+        print("Error: Erling Haaland not found. Please run ingestion first.")
+        db.close()
         return
-        
-    print("\n⚽ =============================================== ⚽")
-    print("      YOU KNOW BALL? - TERMINAL INTERACTIVE TESTER")
-    print("             (Target Player is HIDDEN)")
-    print("⚽ =============================================== ⚽")
+
+    print("\n   YOU KNOW BALL? - INTERACTIVE TESTER (Haaland)")
+    print("=" * 54)
     print("Rules:")
-    print("- You have up to 20 questions to narrow down the player.")
-    print("- You have exactly 3 guesses to name the player.")
-    print("- Type 'g' or 'guess' to submit a guess at any time.")
-    print("- Type 'q' to quit.")
-    print("====================================================\n")
-    
+    print("  - Up to 20 questions, 3 guesses.")
+    print("  - Type 'g' or 'guess' to submit a guess at any time.")
+    print("  - Type 'q' to quit.\n")
+
     engine = CandidateEngine(db)
-    print(f"Initial Candidate Pool Size: {engine.get_remaining_count()} active players\n")
-    
+    print(f"Candidate pool: {engine.get_remaining_count()} players\n")
+    print("=" * 54 + "\n")
+
     question_count = 0
     max_questions = 20
     guess_count = 0
     max_guesses = 3
-    
+    consecutive_invalid = 0
+
     while True:
         try:
-            # Check game limits
             if question_count >= max_questions:
-                print(f"\n⚠️ Game Over: You have reached the maximum of {max_questions} questions!")
+                print(f"\nGame Over! You used all {max_questions} questions.")
                 print(f"The hidden player was: {target_player_name}")
                 break
-                
-            status_line = f"[Q: {question_count}/{max_questions} | Guesses: {guess_count}/{max_guesses}]"
-            action = input(f"{status_line} Enter question (or 'g' to guess, 'q' to quit) > ").strip()
-            
+
+            status = f"[Q: {question_count}/{max_questions}  |  Guesses: {guess_count}/{max_guesses}  |  Pool: {engine.get_remaining_count()}]"
+            action = input(f"{status}\nYour question (or 'g'=guess, 'q'=quit): ").strip()
+
             if not action:
                 continue
-            
+
             if action.lower() == 'q':
-                print(f"Exiting game. The hidden player was: {target_player_name}")
+                print(f"\nQuitting. The hidden player was: {target_player_name}")
                 break
-                
-            # Submit a guess
-            if action.lower() in ['g', 'guess']:
+
+            # ── Guess mode ──────────────────────────────────────────────────
+            if action.lower() in ('g', 'guess'):
                 guess_count += 1
-                player_guess = input(f"🤔 Submit your player guess ({guess_count}/{max_guesses}) > ").strip()
-                
-                # Check match (case insensitive, allow minor space variations)
-                normalized_guess = re.sub(r'\s+', ' ', player_guess.strip().lower())
-                normalized_target = target_player_name.lower()
-                
-                if normalized_guess == normalized_target or normalized_guess in normalized_target:
-                    print(f"\n🏆 CONGRATULATIONS! You guessed it right! It is indeed {target_player_name}!")
+                player_guess = input(f"Your guess ({guess_count}/{max_guesses}): ").strip()
+
+                if guess_matches(player_guess, target_player_name):
+                    print(f"\nCORRECT! The player was {target_player_name}!")
                     break
                 else:
-                    print(f"❌ Incorrect Guess! That is not the hidden player.")
+                    print("Wrong guess!")
                     if guess_count >= max_guesses:
-                        print(f"\n💀 Game Over: You used all {max_guesses} guesses!")
-                        print(f"The hidden player was: {target_player_name}")
+                        print(f"\nNo guesses left! The player was: {target_player_name}")
                         break
-                    continue
-            
-            # Otherwise, parse and execute the question
-            question = action
-            question_count += 1
-            
-            print("\n🤖 [NLP Parsing] Analyzing your question...")
-            parsed = parse_question(db, question)
-            print(f"👉 [NLP Result]: Type='{parsed['type']}', Value='{parsed['value']}'")
-            
-            if parsed["type"] == "invalid" or not parsed["value"]:
-                err_msg = parsed.get("message", "The parser could not understand your question. Try asking about nationality, club history, current club, position, or competition.")
-                print(f"❌ [NLP Output] {err_msg}")
-                question_count -= 1 # Don't charge a question turn for invalid parsing
+                    print(f"   {max_guesses - guess_count} guess(es) remaining.\n")
                 continue
-                
+
+            # ── Question mode ────────────────────────────────────────────────
+            print("\nParsing your question...")
+            parsed = parse_question(db, action)
+
+            if parsed["type"] == "invalid" or not parsed.get("value"):
+                err_msg = parsed.get("message", "Could not understand that question.")
+                print(f"   {err_msg}")
+                consecutive_invalid += 1
+                if consecutive_invalid >= 3:
+                    question_count += 1
+                    consecutive_invalid = 0
+                    print(f"   (3 invalid in a row — turn deducted. {max_questions - question_count} turns left.)\n")
+                else:
+                    print(f"   (No turn charged — invalid #{consecutive_invalid}/3)\n")
+                continue
+
+            consecutive_invalid = 0
+            question_count += 1
+            q_type = parsed["type"]
+            q_value = parsed["value"]
+            print(f"   Parsed as: type='{q_type}', value='{q_value}'")
+
+            # ── Dispatch ─────────────────────────────────────────────────────
             answer = "UNKNOWN"
-            sql_query = ""
-            params = {}
             fact_details = ""
-            
-            if parsed["type"] == "nationality":
-                sql_query = """
-                    SELECT c.name
-                    FROM players p
-                    JOIN countries c ON p.nationality_id = c.id
-                    WHERE p.id = :pid
-                """
-                params = {"pid": haaland_id}
-                res = log_and_execute(db, sql_query, params).scalar()
-                if res:
-                    answer = "YES" if parsed["value"].lower() in res.lower() or res.lower() in parsed["value"].lower() else "NO"
-                    if answer == "YES":
-                        fact_details = f"His nationality is {res}."
-                    else:
-                        fact_details = f"His nationality is not {parsed['value']}."
-                engine.filter_by_nationality(parsed["value"], answer)
-                
-            elif parsed["type"] == "current_club":
-                sql_query = """
-                    SELECT c.name
-                    FROM players p
-                    JOIN clubs c ON p.current_club_id = c.id
-                    WHERE p.id = :pid
-                """
-                params = {"pid": haaland_id}
-                res = log_and_execute(db, sql_query, params).scalar()
-                if res:
-                    answer = "YES" if parsed["value"].lower() in res.lower() or res.lower() in parsed["value"].lower() else "NO"
-                    if answer == "YES":
-                        fact_details = f"His current club is {res}."
-                    else:
-                        fact_details = f"His current club is not {parsed['value']}."
-                engine.filter_by_current_club(parsed["value"], answer)
-                
-            elif parsed["type"] == "club_history":
-                sql_query = """
-                    SELECT COUNT(*)
-                    FROM player_club_history pch
-                    JOIN clubs c ON pch.club_id = c.id
-                    WHERE pch.player_id = :pid AND LOWER(c.name) LIKE :club
-                """
-                params = {"pid": haaland_id, "club": f"%{parsed['value'].lower()}%"}
-                res = log_and_execute(db, sql_query, params).scalar()
-                answer = "YES" if res > 0 else "NO"
-                if answer == "YES":
-                    fact_details = f"He has played for {parsed['value']} in his career."
-                else:
-                    fact_details = f"He has never played for {parsed['value']}."
-                engine.filter_by_club_history(parsed["value"], answer)
-                
-            elif parsed["type"] == "position":
-                sql_query = """
-                    SELECT position_group
-                    FROM players
-                    WHERE id = :pid
-                """
-                params = {"pid": haaland_id}
-                res = log_and_execute(db, sql_query, params).scalar()
-                if res:
-                    answer = "YES" if res.lower() == parsed["value"].lower() else "NO"
-                    pos_map = {"GK": "Goalkeeper", "DEF": "Defender", "MID": "Midfielder", "ATK": "Attacker"}
-                    asked_pos = pos_map.get(parsed["value"].upper(), parsed["value"])
-                    if answer == "YES":
-                        fact_details = f"His position is {asked_pos}."
-                    else:
-                        fact_details = f"His position is not {asked_pos}."
-                engine.filter_by_position(parsed["value"], answer)
-                
-            elif parsed["type"] == "competition":
-                sql_query = """
-                    SELECT COUNT(*)
-                    FROM appearances a
-                    JOIN competitions c ON a.competition_id = c.id
-                    WHERE a.player_id = :pid AND LOWER(c.name) LIKE :comp
-                """
-                params = {"pid": haaland_id, "comp": f"%{parsed['value'].lower()}%"}
-                res = log_and_execute(db, sql_query, params).scalar()
-                answer = "YES" if res > 0 else "NO"
-                if answer == "YES":
-                    fact_details = f"He has played in the {parsed['value']}."
-                else:
-                    fact_details = f"He has never played in the {parsed['value']}."
-                engine.filter_by_competition_history(parsed["value"], answer)
-            
-            # Generate explanation - name is passed to generate_explanation ONLY to censor it if LLM leaks it!
-            from app.nlp.llm.explainer import generate_explanation
-            explanation = generate_explanation(question, answer, target_player_name, fact_details)
-            print(f"\n💬 [AI Host]: \"{explanation}\"")
-            print(f"🎯 [DATABASE ANSWER]: {answer}")
-            print(f"👥 [Remaining Candidates]: {engine.get_remaining_count()}")
-            print("-" * 50 + "\n")
-            
+
+            if q_type == "nationality":
+                answer, fact_details = handle_nationality(db, haaland_id, q_value)
+                engine.filter_by_nationality(q_value, answer)
+
+            elif q_type == "current_club":
+                answer, fact_details = handle_current_club(db, haaland_id, q_value)
+                engine.filter_by_current_club(q_value, answer)
+
+            elif q_type == "club_history":
+                answer, fact_details = handle_club_history(db, haaland_id, q_value)
+                engine.filter_by_club_history(q_value, answer)
+
+            elif q_type == "position":
+                answer, fact_details = handle_position(db, haaland_id, q_value)
+                engine.filter_by_position(q_value, answer)
+
+            elif q_type == "competition":
+                answer, fact_details = handle_competition_history(db, haaland_id, q_value)
+                engine.filter_by_competition_history(q_value, answer)
+
+            elif q_type == "big_six":
+                answer, fact_details = handle_big_six(db, haaland_id)
+                engine.filter_by_big_six(answer)
+
+            elif q_type == "continent":
+                answer, fact_details = handle_continent(db, haaland_id, q_value)
+                engine.filter_by_continent(q_value, answer)
+
+            elif q_type == "age":
+                operator = q_value["operator"]
+                years = q_value["years"]
+                answer, fact_details = handle_age(db, haaland_id, operator, years)
+                engine.filter_by_age(operator, years, answer)
+
+            elif q_type == "foot":
+                answer, fact_details = handle_foot(db, haaland_id, q_value)
+                engine.filter_by_foot(q_value, answer)
+
+            else:
+                print(f"   Question type '{q_type}' is not yet handled. No turn charged.")
+                question_count -= 1
+                continue
+
+            explanation = generate_explanation(action, answer, target_player_name, fact_details)
+            emoji = {"YES": "[YES]", "NO": "[NO]", "UNKNOWN": "[?]"}.get(answer, "[?]")
+            print(f"\n{emoji} {explanation}")
+            print(f"   Candidates remaining: {engine.get_remaining_count()}")
+            print("\n" + "-" * 54 + "\n")
+
         except KeyboardInterrupt:
-            print(f"\nExiting game. The hidden player was: {target_player_name}")
+            print(f"\n\nInterrupted. The hidden player was: {target_player_name}")
             break
+
+    db.close()
+
 
 if __name__ == "__main__":
     main()
