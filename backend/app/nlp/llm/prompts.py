@@ -124,7 +124,5 @@ JSON: {"type": "invalid", "value": null}
 """
 
 
-
-
 def get_user_prompt(question: str) -> str:
     return f"Parse the following question:\n{question}"
