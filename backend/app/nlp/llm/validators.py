@@ -22,7 +22,7 @@ class AgeValue(BaseModel):
 class ParsedQuestion(BaseModel):
     type: Literal[
         "nationality", "current_club", "club_history", "position",
-        "competition", "continent", "age", "foot", "invalid"
+        "competition", "continent", "age", "foot", "big_six", "invalid"
     ]
     value: Optional[Union[str, dict]] = None
 
@@ -38,6 +38,10 @@ class ParsedQuestion(BaseModel):
 
         if t == "invalid":
             self.value = None
+            return self
+
+        if t == "big_six":
+            self.value = "big_six"
             return self
 
         if t == "position":
