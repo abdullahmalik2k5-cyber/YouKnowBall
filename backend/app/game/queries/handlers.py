@@ -89,23 +89,57 @@ def handle_club_history(db: Session, player_id: str, club_name: str) -> tuple[st
 def handle_position(db: Session, player_id: str, position_group: str) -> tuple[str, str]:
     """Check if the player plays in a specific position group."""
     query = text("""
-        SELECT position_group, sub_position
+        SELECT position_group, position, sub_position
         FROM players
         WHERE id = :pid
     """)
     row = db.execute(query, {"pid": player_id}).fetchone()
-    if not row or not row[0]:
+    if not row or (not row[0] and not row[1]):
         return "UNKNOWN", "No position data found."
-    pos_group, sub_pos = row[0], row[1]
-    answer = "YES" if pos_group.upper() == position_group.upper() else "NO"
+
+    pos_group, raw_position, sub_pos = row[0], row[1], row[2]
+
+    # Map from Transfermarkt broad position names → our 4-code groups
+    # Covers the case where position_group is UNKNOWN/null in the DB
+    BROAD_TO_GROUP = {
+        "goalkeeper": "GK",
+        "defender": "DEF",
+        "midfield": "MID",
+        "attack": "ATK",
+    }
+    # Also map sub-positions for finer accuracy
+    SUB_TO_GROUP = {
+        "goalkeeper": "GK",
+        "centre-back": "DEF", "left-back": "DEF", "right-back": "DEF",
+        "wing-back": "DEF", "left wing-back": "DEF", "right wing-back": "DEF",
+        "defensive midfield": "MID", "central midfield": "MID",
+        "attacking midfield": "MID", "right midfield": "MID", "left midfield": "MID",
+        "left winger": "ATK", "right winger": "ATK", "centre-forward": "ATK",
+        "second striker": "ATK", "striker": "ATK",
+    }
+
+    # Determine the effective position group
+    effective_group = None
+    if pos_group and pos_group.upper() not in ("UNKNOWN", ""):
+        effective_group = pos_group.upper()
+    elif sub_pos:
+        effective_group = SUB_TO_GROUP.get(sub_pos.lower())
+    if not effective_group and raw_position:
+        effective_group = BROAD_TO_GROUP.get(raw_position.lower())
+
+    if not effective_group:
+        return "UNKNOWN", "No position data found."
+
+    answer = "YES" if effective_group == position_group.upper() else "NO"
     pos_label_map = {"GK": "Goalkeeper", "DEF": "Defender", "MID": "Midfielder", "ATK": "Attacker"}
     asked_label = pos_label_map.get(position_group.upper(), position_group)
     if answer == "YES":
         fact = f"His position is {asked_label}" + (f" ({sub_pos})." if sub_pos else ".")
     else:
-        actual_label = pos_label_map.get(pos_group.upper(), pos_group)
+        actual_label = pos_label_map.get(effective_group, effective_group)
         fact = f"He is not a {asked_label} — he is a {actual_label}."
     return answer, fact
+
 
 
 def handle_competition_history(db: Session, player_id: str, competition_name: str) -> tuple[str, str]:
@@ -123,7 +157,51 @@ def handle_competition_history(db: Session, player_id: str, competition_name: st
     return answer, fact
 
 
+def handle_big_six(db: Session, player_id: str) -> tuple[str, str]:
+    """Check if the player has ever played for one of the 'Big Six' Premier League clubs.
+
+    The Big Six: Arsenal, Chelsea, Liverpool, Manchester City,
+                 Manchester United, Tottenham Hotspur.
+    We match using a broad LIKE on club name so canonical DB names
+    (e.g. 'Manchester City Football Club') are covered.
+    """
+    BIG_SIX_PATTERNS = [
+        "%arsenal%",
+        "%chelsea%",
+        "%liverpool%",
+        "%manchester city%",
+        "%manchester united%",
+        "%tottenham%",
+    ]
+    for pattern in BIG_SIX_PATTERNS:
+        row = db.execute(
+            text("""
+                SELECT COUNT(*)
+                FROM player_club_history pch
+                JOIN clubs c ON pch.club_id = c.id
+                WHERE pch.player_id = :pid AND LOWER(c.name) LIKE :club
+            """),
+            {"pid": player_id, "club": pattern}
+        ).fetchone()
+        if row and row[0] > 0:
+            # Find the actual club name for the fact message
+            club_name_row = db.execute(
+                text("""
+                    SELECT MAX(c.name)
+                    FROM player_club_history pch
+                    JOIN clubs c ON pch.club_id = c.id
+                    WHERE pch.player_id = :pid AND LOWER(c.name) LIKE :club
+                """),
+                {"pid": player_id, "club": pattern}
+            ).fetchone()
+            club_display = club_name_row[0] if club_name_row else "a Big Six club"
+            return "YES", f"Yes — he has played for {club_display}, which is one of the Big Six."
+
+    return "NO", "He has never played for any of the Big Six Premier League clubs (Arsenal, Chelsea, Liverpool, Man City, Man United, Spurs)."
+
+
 # ─── New handlers ─────────────────────────────────────────────────────────────
+
 
 def handle_continent(db: Session, player_id: str, continent_name: str) -> tuple[str, str]:
     """
