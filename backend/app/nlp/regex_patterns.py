@@ -148,10 +148,17 @@ def parse_with_rules(db: Session, question: str) -> dict | None:
     """
     q = question.lower().strip()
 
+    # ── 0. Big Six — must come before any other check ────────────────────────
+    # "is he in the big six", "does he play for a big 6 club", "big six club?" etc.
+    # This is a club-group question, NOT a competition — handle it explicitly.
+    if re.search(r"\bbig[\s\-]?6\b|\bbig[\s\-]?six\b", q):
+        return {"type": "big_six", "value": "big_six"}
+
     # ── 1. Position ──────────────────────────────────────────────────────────
     for keyword, pos in POSITIONS.items():
         if re.search(rf"\b{re.escape(keyword)}\b", q):
             return {"type": "position", "value": pos}
+
 
     # ── 2. Age ───────────────────────────────────────────────────────────────
     # Must come before nationality so "under 21" doesn't hit country detection.
