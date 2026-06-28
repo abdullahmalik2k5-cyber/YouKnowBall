@@ -101,6 +101,21 @@ class CandidateEngine:
         self.initial_size = len(self.pool)
         print(f"  [Engine] Pool initialised: {self.initial_size} eligible players.")
 
+    @classmethod
+    def restore(cls, db: Session, difficulty: str, pool: Set[str], initial_size: int) -> "CandidateEngine":
+        """Rebuild an engine from a previously saved pool without re-running the
+        (expensive) initial pool-building query.
+
+        Used by the web API, where the candidate pool is persisted in the game
+        session between requests and a fresh DB session is bound on each call.
+        """
+        engine = cls.__new__(cls)
+        engine.db = db
+        engine._difficulty = difficulty
+        engine.pool = set(pool)
+        engine.initial_size = initial_size
+        return engine
+
     def get_remaining_count(self) -> int:
         return len(self.pool)
 

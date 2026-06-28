@@ -1,0 +1,23 @@
+# Render Blueprint for "You Know Ball?"
+# Deploys the FastAPI app (which also serves the static frontend) as a single
+# persistent web service. In-memory game sessions work because this is one
+# long-running process (unlike serverless platforms).
+#
+# After connecting this repo as a Blueprint in the Render dashboard, Render will
+# prompt for the two secret env vars below (they are marked sync:false so they
+# are NOT stored in git).
+services:
+  - type: web
+    name: you-know-ball
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements-prod.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: DATABASE_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false

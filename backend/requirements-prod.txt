@@ -1,0 +1,10 @@
+# Runtime-only dependencies for deployment (Render).
+# Excludes pandas/numpy/pytest — those are only used by the data-ingestion
+# scripts and tests, never imported by the running web app.
+fastapi>=0.111
+uvicorn[standard]>=0.29
+pydantic>=2.7
+sqlalchemy>=2.0.30
+psycopg[binary]>=3.2
+groq>=0.9
+httpx>=0.27
